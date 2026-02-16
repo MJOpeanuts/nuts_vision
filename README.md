@@ -2,6 +2,9 @@
 
 A computer vision system for automated electronic circuit board analysis using YOLOv8 and Tesseract OCR.
 
+> 🇫🇷 [Version française / French version](README_FR.md)
+> 📖 [Quick Start in French / Démarrage rapide en français](DEMARRAGE_RAPIDE.md)
+
 ## Overview
 
 This project uses computer vision to analyze images of electronic circuit boards, detect and automatically crop individual components (ICs, resistors, capacitors, etc.), and extract Manufacturer Part Numbers (MPNs) via OCR. The system is built on a YOLO model trained on the CompDetect dataset (583 images, 16 component classes).
