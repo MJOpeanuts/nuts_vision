@@ -2,8 +2,11 @@
 
 A computer vision system for automated electronic circuit board analysis using YOLOv8 and Tesseract OCR.
 
-> 🇫🇷 [Version française / French version](README_FR.md)
-> 📖 [Quick Start in French / Démarrage rapide en français](DEMARRAGE_RAPIDE.md)
+> 🚀 **[START HERE / COMMENCER ICI](COMMENCER_ICI.md)** - Get started in 5 minutes!
+> 
+> 🇫🇷 [Version française / French version](README_FR.md) | [Démarrage rapide](DEMARRAGE_RAPIDE.md)
+> 
+> 🇬🇧 [Quick Start Guide](QUICKSTART.md)
 
 ## Overview
 
