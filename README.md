@@ -1,16 +1,18 @@
 # nuts_vision - Electronic Component Detection & OCR
 
-A computer vision system for automated electronic circuit board analysis using YOLOv8 and Tesseract OCR.
+A computer vision system for automated electronic circuit board analysis using YOLOv8 and Tesseract OCR. Now with integrated Arducam 108MP motorized focus camera support for high-quality image capture.
 
 > 🚀 **[START HERE / COMMENCER ICI](COMMENCER_ICI.md)** - Get started in 5 minutes!
 > 
 > 🇫🇷 [Version française / French version](README_FR.md) | [Démarrage rapide](DEMARRAGE_RAPIDE.md)
 > 
-> 🇬🇧 [Quick Start Guide](QUICKSTART.md)
+> 🇬🇧 [Quick Start Guide](QUICKSTART.md) | 📷 [Camera Guide](CAMERA.md)
 
 ## Overview
 
 This project uses computer vision to analyze images of electronic circuit boards, detect and automatically crop individual components (ICs, resistors, capacitors, etc.), and extract Manufacturer Part Numbers (MPNs) via OCR. The system is built on a YOLO model trained on the CompDetect dataset (583 images, 16 component classes).
+
+**New:** Full integration with Arducam 108MP camera (ref: B0494C) for capturing high-resolution photos with automatic focus control.
 
 ### Key Features
 

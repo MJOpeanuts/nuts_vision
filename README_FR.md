@@ -1,12 +1,14 @@
 # nuts_vision - Détection de Composants Électroniques & OCR
 
-Système de vision par ordinateur pour l'analyse automatisée de cartes électroniques utilisant YOLOv8 et Tesseract OCR.
+Système de vision par ordinateur pour l'analyse automatisée de cartes électroniques utilisant YOLOv8 et Tesseract OCR. Supporte maintenant la caméra Arducam 108MP avec focus motorisé pour la capture d'images.
 
-> 🇬🇧 [English version](README.md)
+> 🇬🇧 [English version](README.md) | 📷 [Guide Caméra](CAMERA_GUIDE_FR.md)
 
 ## Vue d'ensemble
 
 Ce projet utilise la vision par ordinateur pour analyser des images de cartes électroniques, détecter et découper automatiquement les composants individuels (circuits intégrés, résistances, condensateurs, etc.), et extraire les numéros de pièce fabricant (MPN) via OCR. Le système est basé sur un modèle YOLO entraîné sur le dataset CompDetect (583 images, 16 classes de composants).
+
+**Nouveauté:** Intégration complète de la caméra Arducam 108MP (réf: B0494C) pour capturer des photos haute résolution avec contrôle automatique du focus.
 
 ### Fonctionnalités Principales
 
