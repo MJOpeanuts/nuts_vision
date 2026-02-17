@@ -558,7 +558,7 @@ elif page == "🗄️ Database Viewer":
         # Table selector
         table_view = st.selectbox(
             "Select Table",
-            ["📸 Images Input", "🔄 Jobs Log", "🎯 Detections", "✂️ Cropped ICs", "📝 OCR Results"]
+            ["📸 Images Input", "🔄 Jobs Log", "🎯 Detections", "✂️ Cropped ICs", "📝 OCR Results", "📷 Camera Captures"]
         )
         
         # Refresh button
@@ -713,6 +713,66 @@ elif page == "🗄️ Database Viewer":
                 else:
                     st.info("No OCR results in database yet.")
             
+            elif table_view == "📷 Camera Captures":
+                st.markdown("### Camera Captures Table")
+                st.markdown("*All photos captured from Arducam 108MP camera*")
+                
+                # Filter by mode
+                mode_filter = st.radio(
+                    "Filter by Camera Mode:",
+                    ["All", "Preview Mode", "Scan Mode"],
+                    horizontal=True
+                )
+                
+                camera_mode_param = None
+                if mode_filter == "Preview Mode":
+                    camera_mode_param = "preview"
+                elif mode_filter == "Scan Mode":
+                    camera_mode_param = "scan"
+                
+                data = st.session_state.db.get_all_camera_captures(camera_mode=camera_mode_param)
+                
+                if data:
+                    df = pd.DataFrame(data)
+                    if 'captured_at' in df.columns:
+                        df['captured_at'] = pd.to_datetime(df['captured_at']).dt.strftime('%Y-%m-%d %H:%M:%S')
+                    
+                    # Format file size
+                    if 'file_size_bytes' in df.columns:
+                        df['file_size_mb'] = (df['file_size_bytes'] / (1024 * 1024)).round(2)
+                    
+                    st.dataframe(df, use_container_width=True, height=400)
+                    st.caption(f"Total records: {len(df)}")
+                    
+                    # Show statistics
+                    st.markdown("---")
+                    st.markdown("### Capture Statistics")
+                    
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        preview_count = len(df[df['camera_mode'] == 'preview']) if 'camera_mode' in df.columns else 0
+                        st.metric("Preview Captures", preview_count)
+                    with col2:
+                        scan_count = len(df[df['camera_mode'] == 'scan']) if 'camera_mode' in df.columns else 0
+                        st.metric("Scan Captures", scan_count)
+                    with col3:
+                        if 'file_size_mb' in df.columns:
+                            avg_size = df['file_size_mb'].mean()
+                            st.metric("Avg File Size", f"{avg_size:.2f} MB")
+                    with col4:
+                        total_size = df['file_size_mb'].sum() if 'file_size_mb' in df.columns else 0
+                        st.metric("Total Storage", f"{total_size:.2f} MB")
+                    
+                    # Resolution distribution
+                    if 'resolution_width' in df.columns and 'resolution_height' in df.columns:
+                        st.markdown("---")
+                        st.markdown("### Resolution Distribution")
+                        df['resolution'] = df['resolution_width'].astype(str) + 'x' + df['resolution_height'].astype(str)
+                        resolution_counts = df['resolution'].value_counts()
+                        st.bar_chart(resolution_counts)
+                else:
+                    st.info("No camera captures in database yet. Use the Camera Control page to capture photos!")
+            
         except Exception as e:
             st.error(f"Error loading data: {str(e)}")
             import traceback
@@ -787,6 +847,39 @@ elif page == "📊 Statistics":
                 )
             else:
                 st.info("No jobs recorded yet.")
+            
+            # Camera capture statistics
+            st.markdown("---")
+            st.markdown("### 📷 Camera Capture Statistics")
+            
+            try:
+                camera_stats = st.session_state.db.get_camera_capture_statistics()
+                
+                if camera_stats and camera_stats.get('total_captures', 0) > 0:
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        st.metric("Total Captures", camera_stats.get('total_captures', 0))
+                    with col2:
+                        st.metric("Preview Mode", camera_stats.get('preview_captures', 0))
+                    with col3:
+                        st.metric("Scan Mode", camera_stats.get('scan_captures', 0))
+                    with col4:
+                        avg_size = camera_stats.get('avg_file_size', 0)
+                        if avg_size:
+                            avg_size_mb = avg_size / (1024 * 1024)
+                            st.metric("Avg File Size", f"{avg_size_mb:.2f} MB")
+                        else:
+                            st.metric("Avg File Size", "N/A")
+                    
+                    # Show last capture time
+                    last_capture = camera_stats.get('last_capture_time')
+                    if last_capture:
+                        st.info(f"📸 Last capture: {pd.to_datetime(last_capture).strftime('%Y-%m-%d %H:%M:%S')}")
+                else:
+                    st.info("No camera captures recorded yet. Use the Camera Control page to start capturing!")
+            except Exception as e:
+                st.warning(f"Could not load camera statistics: {e}")
             
         except Exception as e:
             st.error(f"Error loading statistics: {str(e)}")
@@ -1251,6 +1344,31 @@ elif page == "📷 Camera Control":
                         
                         # Store in session state for processing
                         st.session_state.last_captured_photo = saved_path
+                        
+                        # Log capture to database if DB is available
+                        if st.session_state.get('db_connected', False) and 'db' in st.session_state:
+                            try:
+                                camera_info = st.session_state.camera.get_camera_info()
+                                file_size = Path(saved_path).stat().st_size if Path(saved_path).exists() else None
+                                
+                                capture_id = st.session_state.db.log_camera_capture(
+                                    file_name=Path(saved_path).name,
+                                    file_path=saved_path,
+                                    camera_mode=st.session_state.camera_mode,
+                                    resolution_width=camera_info.get('width'),
+                                    resolution_height=camera_info.get('height'),
+                                    fps=camera_info.get('fps'),
+                                    focus_value=camera_info.get('focus'),
+                                    exposure_value=camera_info.get('exposure'),
+                                    brightness=camera_info.get('brightness'),
+                                    contrast=camera_info.get('contrast'),
+                                    saturation=camera_info.get('saturation'),
+                                    jpeg_quality=quality,
+                                    file_size_bytes=file_size
+                                )
+                                st.success(f"✅ Capture logged to database (ID: {capture_id})")
+                            except Exception as e:
+                                st.warning(f"Photo saved but database logging failed: {e}")
                         
                         # Display the captured photo
                         try:
