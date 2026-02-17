@@ -14,12 +14,13 @@ This project uses computer vision to analyze images of electronic circuit boards
 
 ### Key Features
 
+- **🌐 Web Interface**: Modern Streamlit-based GUI with Supabase-like database viewer
 - **Component Detection**: YOLOv8-based detection of 16 component types
 - **Image Preprocessing**: Gaussian blur and edge detection for improved accuracy
 - **Smart IC Cropping**: Automatically crops only IC components for OCR processing
 - **Advanced OCR**: Multi-angle OCR (0°, 90°, 180°, 270°) with image optimization for better text extraction
 - **MPN Extraction**: Manufacturer part number extraction from ICs with confidence scoring
-- **Database Tracking**: Optional PostgreSQL database for tracking all extractions and processing jobs
+- **Database Tracking**: PostgreSQL database with Supabase-like interface for tracking all operations
 - **CSV Export**: Save extracted MPNs for inventory management
 - **Visualization**: Generate statistics and visualizations of detection results
 

@@ -78,3 +78,7 @@ logs/
 # Database
 *.sql.backup
 backup.sql
+
+# Web Interface
+uploads/
+.streamlit/secrets.toml
