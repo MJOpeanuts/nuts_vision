@@ -984,6 +984,104 @@ elif page == "📷 Camera Control":
         
         st.markdown("---")
         
+        # Image Quality Controls Section
+        st.markdown('<div class="sub-header">🎨 Image Quality Controls</div>', unsafe_allow_html=True)
+        
+        st.markdown("""
+        Adjust exposure, brightness, contrast, and other image parameters to optimize image quality.
+        **Tip:** Enable auto-exposure for automatic brightness adjustment, or use manual controls for precise tuning.
+        """)
+        
+        # Auto-exposure toggle
+        col_auto_exp, col_manual = st.columns([1, 3])
+        
+        with col_auto_exp:
+            current_auto_exp = st.session_state.get('auto_exposure_enabled', True)
+            auto_exp = st.checkbox("🔆 Auto Exposure", value=current_auto_exp, 
+                                   help="Enable automatic exposure adjustment")
+            
+            if auto_exp != current_auto_exp:
+                st.session_state.auto_exposure_enabled = auto_exp
+                st.session_state.camera.set_auto_exposure(auto_exp)
+                st.rerun()
+        
+        # Manual controls (only shown when auto-exposure is disabled)
+        if not st.session_state.get('auto_exposure_enabled', True):
+            with col_manual:
+                st.info("Auto-exposure is disabled. Use manual controls below.")
+            
+            # Get current values
+            current_exposure = st.session_state.camera.get_exposure()
+            current_gain = st.session_state.camera.get_gain()
+            
+            if current_exposure is None:
+                current_exposure = -5
+            if current_gain is None:
+                current_gain = 0
+            
+            col_exp, col_gain = st.columns(2)
+            
+            with col_exp:
+                # Exposure slider (typically negative values for manual mode)
+                exposure_value = st.slider("Exposure", min_value=-13, max_value=-1, 
+                                          value=int(current_exposure), step=1,
+                                          help="Adjust exposure time (higher = brighter but slower)")
+                
+                if exposure_value != int(current_exposure):
+                    st.session_state.camera.set_exposure(exposure_value)
+                    if not st.session_state.live_preview_active:
+                        st.info(f"Exposure set to {exposure_value}. Enable live preview to see the effect!")
+            
+            with col_gain:
+                # Gain slider
+                gain_value = st.slider("Gain (ISO)", min_value=0, max_value=100, 
+                                      value=int(current_gain), step=1,
+                                      help="Adjust sensor gain/amplification (higher = brighter but more noise)")
+                
+                if gain_value != int(current_gain):
+                    st.session_state.camera.set_gain(gain_value)
+                    if not st.session_state.live_preview_active:
+                        st.info(f"Gain set to {gain_value}. Enable live preview to see the effect!")
+        else:
+            with col_manual:
+                st.success("Auto-exposure is enabled. Camera will automatically adjust brightness.")
+        
+        # Brightness, Contrast, Saturation controls (always available)
+        st.markdown("**Additional Controls**")
+        
+        info = st.session_state.camera.get_camera_info()
+        current_brightness = info.get('brightness', 128)
+        current_contrast = info.get('contrast', 128)
+        current_saturation = info.get('saturation', 128)
+        
+        col_bright, col_contr, col_satur = st.columns(3)
+        
+        with col_bright:
+            brightness_value = st.slider("Brightness", min_value=0, max_value=255, 
+                                        value=int(current_brightness), step=1,
+                                        help="Adjust overall brightness")
+            
+            if brightness_value != int(current_brightness):
+                st.session_state.camera.set_brightness(brightness_value)
+        
+        with col_contr:
+            contrast_value = st.slider("Contrast", min_value=0, max_value=255, 
+                                      value=int(current_contrast), step=1,
+                                      help="Adjust contrast (difference between light and dark)")
+            
+            if contrast_value != int(current_contrast):
+                st.session_state.camera.set_contrast(contrast_value)
+        
+        with col_satur:
+            saturation_value = st.slider("Saturation", min_value=0, max_value=255, 
+                                        value=int(current_saturation), step=1,
+                                        help="Adjust color saturation/intensity")
+            
+            if saturation_value != int(current_saturation):
+                st.session_state.camera.set_saturation(saturation_value)
+        
+        st.markdown("---")
+        
         # Preview Section
         st.markdown('<div class="sub-header">👁️ Live Preview</div>', unsafe_allow_html=True)
         
@@ -1031,7 +1129,7 @@ elif page == "📷 Camera Control":
         
         # Refresh rate control for live preview
         if 'preview_refresh_rate' not in st.session_state:
-            st.session_state.preview_refresh_rate = 0.5  # seconds
+            st.session_state.preview_refresh_rate = 0.1  # seconds (10 FPS for smoother preview)
         
         # Live preview loop
         if st.session_state.live_preview_active:
