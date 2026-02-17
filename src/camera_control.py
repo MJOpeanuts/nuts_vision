@@ -127,6 +127,143 @@ class ArducamCamera:
             print(f"Error setting focus: {e}")
             return False
     
+    def set_exposure(self, exposure_value: int) -> bool:
+        """
+        Set camera exposure
+        
+        Args:
+            exposure_value: Exposure value (camera-dependent range, typically negative values for manual)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.is_connected:
+            print("Error: Camera not connected")
+            return False
+        
+        try:
+            # Disable auto-exposure first
+            self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)  # 0.25 = manual mode
+            # Set exposure
+            self.cap.set(cv2.CAP_PROP_EXPOSURE, exposure_value)
+            print(f"Exposure set to {exposure_value}")
+            return True
+        except Exception as e:
+            print(f"Error setting exposure: {e}")
+            return False
+    
+    def set_auto_exposure(self, enable: bool) -> bool:
+        """
+        Enable or disable automatic exposure
+        
+        Args:
+            enable: True to enable auto-exposure, False to disable
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.is_connected:
+            print("Error: Camera not connected")
+            return False
+        
+        try:
+            # 0.75 = auto mode, 0.25 = manual mode
+            mode = 0.75 if enable else 0.25
+            self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, mode)
+            print(f"Auto-exposure {'enabled' if enable else 'disabled'}")
+            return True
+        except Exception as e:
+            print(f"Error setting auto-exposure: {e}")
+            return False
+    
+    def set_brightness(self, brightness_value: int) -> bool:
+        """
+        Set camera brightness
+        
+        Args:
+            brightness_value: Brightness value (typically 0-255)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.is_connected:
+            print("Error: Camera not connected")
+            return False
+        
+        try:
+            self.cap.set(cv2.CAP_PROP_BRIGHTNESS, brightness_value)
+            print(f"Brightness set to {brightness_value}")
+            return True
+        except Exception as e:
+            print(f"Error setting brightness: {e}")
+            return False
+    
+    def set_contrast(self, contrast_value: int) -> bool:
+        """
+        Set camera contrast
+        
+        Args:
+            contrast_value: Contrast value (typically 0-255)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.is_connected:
+            print("Error: Camera not connected")
+            return False
+        
+        try:
+            self.cap.set(cv2.CAP_PROP_CONTRAST, contrast_value)
+            print(f"Contrast set to {contrast_value}")
+            return True
+        except Exception as e:
+            print(f"Error setting contrast: {e}")
+            return False
+    
+    def set_saturation(self, saturation_value: int) -> bool:
+        """
+        Set camera saturation
+        
+        Args:
+            saturation_value: Saturation value (typically 0-255)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.is_connected:
+            print("Error: Camera not connected")
+            return False
+        
+        try:
+            self.cap.set(cv2.CAP_PROP_SATURATION, saturation_value)
+            print(f"Saturation set to {saturation_value}")
+            return True
+        except Exception as e:
+            print(f"Error setting saturation: {e}")
+            return False
+    
+    def set_gain(self, gain_value: int) -> bool:
+        """
+        Set camera gain (ISO/amplification)
+        
+        Args:
+            gain_value: Gain value (camera-dependent range)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.is_connected:
+            print("Error: Camera not connected")
+            return False
+        
+        try:
+            self.cap.set(cv2.CAP_PROP_GAIN, gain_value)
+            print(f"Gain set to {gain_value}")
+            return True
+        except Exception as e:
+            print(f"Error setting gain: {e}")
+            return False
+    
     def get_focus(self) -> Optional[int]:
         """
         Get current focus value
@@ -143,6 +280,42 @@ class ArducamCamera:
             return int(focus_value)
         except Exception as e:
             print(f"Error getting focus: {e}")
+            return None
+    
+    def get_exposure(self) -> Optional[int]:
+        """
+        Get current exposure value
+        
+        Returns:
+            Current exposure value or None if error
+        """
+        if not self.is_connected:
+            print("Error: Camera not connected")
+            return None
+        
+        try:
+            exposure_value = self.cap.get(cv2.CAP_PROP_EXPOSURE)
+            return int(exposure_value)
+        except Exception as e:
+            print(f"Error getting exposure: {e}")
+            return None
+    
+    def get_gain(self) -> Optional[int]:
+        """
+        Get current gain value
+        
+        Returns:
+            Current gain value or None if error
+        """
+        if not self.is_connected:
+            print("Error: Camera not connected")
+            return None
+        
+        try:
+            gain_value = self.cap.get(cv2.CAP_PROP_GAIN)
+            return int(gain_value)
+        except Exception as e:
+            print(f"Error getting gain: {e}")
             return None
     
     def capture_frame(self) -> Optional[np.ndarray]:
@@ -228,6 +401,9 @@ class ArducamCamera:
             "brightness": int(self.cap.get(cv2.CAP_PROP_BRIGHTNESS)),
             "contrast": int(self.cap.get(cv2.CAP_PROP_CONTRAST)),
             "saturation": int(self.cap.get(cv2.CAP_PROP_SATURATION)),
+            "exposure": int(self.cap.get(cv2.CAP_PROP_EXPOSURE)),
+            "gain": int(self.cap.get(cv2.CAP_PROP_GAIN)),
+            "auto_exposure": int(self.cap.get(cv2.CAP_PROP_AUTO_EXPOSURE)),
         }
         
         return info
