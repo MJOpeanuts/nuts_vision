@@ -959,7 +959,7 @@ elif page == "📷 Camera Control":
             st.markdown('<div class="sub-header">👁️ Live Preview (Preview Mode)</div>', unsafe_allow_html=True)
             
             st.markdown("""
-            **Preview Mode is optimized for smooth, real-time adjustments at 1280x720@60fps.**
+            **Preview Mode is optimized for smooth, real-time adjustments at 1280x720 @ 60fps.**
             
             Use the live preview below to:
             - Adjust focus and see changes immediately
@@ -1010,7 +1010,7 @@ elif page == "📷 Camera Control":
         
         # Fixed refresh rate for optimal 60fps preview performance
         if 'preview_refresh_rate' not in st.session_state:
-            st.session_state.preview_refresh_rate = 0.016  # ~60 FPS (1/60 second)
+            st.session_state.preview_refresh_rate = 0.001  # Minimal delay to maximize FPS (targeting 60fps)
         
         # Live preview loop
         if st.session_state.live_preview_active:
@@ -1029,7 +1029,7 @@ elif page == "📷 Camera Control":
                     use_container_width=True
                 )
                 
-                # Fixed refresh delay for 60fps performance
+                # Minimal refresh delay to maximize FPS (actual FPS depends on frame capture and processing time)
                 time.sleep(st.session_state.preview_refresh_rate)
                 st.rerun()
             else:
