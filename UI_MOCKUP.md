@@ -30,11 +30,12 @@
 │ **Tip:** Enable live preview above to see focus changes in real-time!       │
 │                                                                              │
 │ Focus Value:                                   Auto Focus                    │
-│ [━━━━━━━━●━━━━━━━━━━] 125                                                    │
-│ 0                    255                       [🔍 Auto Focus Scan]          │
+│ [━━━━━━━━━━━●━━━━━━━━] 500                                                    │
+│ 0                    1023                      [🔍 Auto Focus Scan]          │
 │                                                                              │
 │                                                Focus Presets                 │
 │                                                [📍 Near] [📍 Mid] [📍 Far]   │
+│                                                (200)     (500)    (800)      │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
 
@@ -99,24 +100,24 @@
 
 ## Nouvelles Fonctionnalités / New Features
 
-### 1. 📐 Presets de Résolution / Resolution Presets
-- **VGA (640x480)** - Basse qualité / Low quality
-- **HD (1280x720)** - Prévisualisation rapide / Fast preview
-- **Full HD (1920x1080)** - Recommandé / Recommended ⭐
-- **2K (2560x1440)** - Haute qualité / High quality
-- **4K (3840x2160)** - Qualité max / Max quality
-- **Personnalisée / Custom** - Valeurs personnalisées / Custom values
+### 1. 📐 Presets de Résolution / Resolution Presets (Arducam 108MP)
+- **HD 720p@60fps** - **Recommandé** - Fluide et rapide / **Recommended** - Smooth & fast ⭐
+- **4K UHD@10fps** - Haute qualité / High quality
+- **4000x3000@7fps** - Ultra haute qualité / Ultra high quality
+- **HD 720p@30fps** - Prévisualisation / Preview
+- **VGA@30fps** - Basse qualité / Low quality
+- **Personnalisée / Custom** - Valeurs personnalisées (max 12000x9000) / Custom values (max 12000x9000)
 
 ### 2. 📊 Affichage de la Résolution / Resolution Display
 L'interface affiche maintenant clairement:
 - Résolution actuelle (largeur x hauteur)
 - FPS configuré
-- Valeur de focus actuelle
+- Valeur de focus actuelle (0-1023)
 
 The interface now clearly displays:
 - Current resolution (width x height)
 - Configured FPS
-- Current focus value
+- Current focus value (0-1023)
 
 ### 3. 👁️ Prévisualisation en Direct / Live Preview
 - ▶️ **Start/Stop** - Activer/Désactiver la prévisualisation
@@ -127,10 +128,10 @@ The interface now clearly displays:
   - 2.0s (0.5 FPS) - Économe / Conservative
 - 📈 **Sharpness Score** - Score de netteté affiché en temps réel
 
-### 4. 🎯 Presets de Focus / Focus Presets
-- 📍 **Near** (~10cm) - Objets proches / Close objects
-- 📍 **Mid** (~20cm) - Distance moyenne / Medium distance ⭐
-- 📍 **Far** (~30cm+) - Objets éloignés / Distant objects
+### 4. 🎯 Presets de Focus / Focus Presets (Arducam 108MP - Range 0-1023)
+- 📍 **Near** (~10cm) - Objets proches / Close objects - **Valeur 200**
+- 📍 **Mid** (~20cm) - Distance moyenne / Medium distance - **Valeur 500** ⭐
+- 📍 **Far** (~30cm+) - Objets éloignés / Distant objects - **Valeur 800**
 
 ### 5. 🔧 Contrôle du Focus Amélioré / Improved Focus Control
 - Application automatique lors du changement du curseur

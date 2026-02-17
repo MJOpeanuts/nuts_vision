@@ -35,16 +35,20 @@ Responding to the user's request to visualize the camera image in real-time for 
 ### 2. 📐 Presets de Résolution / Resolution Presets
 
 **Description:**
-Sélection simplifiée de la résolution avec des presets prédéfinis :
+Sélection simplifiée de la résolution avec des presets prédéfinis basés sur les spécifications officielles Arducam 108MP:
 
-Simplified resolution selection with predefined presets:
+Simplified resolution selection with predefined presets based on official Arducam 108MP specifications:
 
-- **VGA (640x480)** - Basse qualité, très rapide / Low quality, very fast
-- **HD (1280x720)** - Prévisualisation rapide / Fast preview
-- **Full HD (1920x1080)** - **Recommandé** / **Recommended**
-- **2K (2560x1440)** - Haute qualité / High quality
-- **4K (3840x2160)** - Qualité maximale / Maximum quality
+- **HD 720p@60fps** - **Recommandé** - Fluide et rapide / **Recommended** - Smooth & fast ⭐
+- **4K UHD@10fps** - Haute qualité / High quality
+- **4000x3000@7fps** - Ultra haute qualité / Ultra high quality
+- **HD 720p@30fps** - Prévisualisation / Preview
+- **VGA@30fps** - Basse qualité / Low quality
 - **Personnalisée / Custom** - Définir ses propres valeurs / Define custom values
+
+**Note:** La résolution 108MP (12000x9000) nécessite l'application demo Arducam et n'est pas disponible via OpenCV.
+
+**Note:** The 108MP resolution (12000x9000) requires the Arducam demo application and is not available via OpenCV.
 
 **Affichage de la résolution:**
 L'interface affiche maintenant clairement la résolution utilisée :
@@ -101,9 +105,9 @@ Quick buttons for common distances:
 
 ### Pour le réglage du focus / For focus adjustment:
 
-1. **Connecter en basse résolution pour la prévisualisation:**
+1. **Connecter en résolution optimale pour la prévisualisation:**
    ```
-   Preset: HD (1280x720) @ 30fps
+   Preset: HD 720p@60fps (Arducam 108MP optimal)
    ```
 
 2. **Activer la prévisualisation en direct:**
@@ -111,21 +115,21 @@ Quick buttons for common distances:
    Cliquer sur "▶️ Start Live Preview"
    ```
 
-3. **Ajuster le focus:**
+3. **Ajuster le focus (0-1023):**
    - Observer l'image et le score de netteté
    - Ajuster le curseur jusqu'à obtenir le score le plus élevé
    - Ou utiliser "🔍 Auto Focus Scan"
 
-4. **Capturer en haute résolution:**
+4. **Capturer en haute résolution (optionnel):**
    - Arrêter la prévisualisation
-   - Se reconnecter en Full HD ou 2K
+   - Se reconnecter en 4K UHD ou 4000x3000
    - Capturer la photo finale
 
 ### For focus adjustment:
 
-1. **Connect in low resolution for preview:**
+1. **Connect in optimal resolution for preview:**
    ```
-   Preset: HD (1280x720) @ 30fps
+   Preset: HD 720p@60fps (Arducam 108MP optimal)
    ```
 
 2. **Enable live preview:**
@@ -133,29 +137,30 @@ Quick buttons for common distances:
    Click "▶️ Start Live Preview"
    ```
 
-3. **Adjust focus:**
+3. **Adjust focus (0-1023):**
    - Observe the image and sharpness score
    - Adjust slider until highest score is achieved
    - Or use "🔍 Auto Focus Scan"
 
-4. **Capture in high resolution:**
+4. **Capture in high resolution (optional):**
    - Stop preview
-   - Reconnect in Full HD or 2K
+   - Reconnect in 4K UHD or 4000x3000
    - Capture final photo
 
 ## 💡 Conseils / Tips
 
 ### Performance / Performance
 
-- Utilisez HD (720p) pour la prévisualisation = plus fluide / Use HD (720p) for preview = smoother
-- Utilisez Full HD ou plus pour la capture finale = meilleure qualité OCR / Use Full HD or higher for final capture = better OCR quality
+- Utilisez HD 720p@60fps pour la prévisualisation = très fluide / Use HD 720p@60fps for preview = very smooth
+- Utilisez 4K UHD ou 4000x3000 pour la capture finale = meilleure qualité OCR / Use 4K UHD or 4000x3000 for final capture = better OCR quality
 - Le score de netteté typique pour un PCB bien mis au point : 100-300 / Typical sharpness score for a well-focused PCB: 100-300
 
-### Focus
+### Focus (Arducam 108MP - Range 0-1023)
 
-- Commencez avec les presets Near/Mid/Far / Start with Near/Mid/Far presets
+- Commencez avec les presets Near (200) / Mid (500) / Far (800) / Start with Near/Mid/Far presets
 - Utilisez la prévisualisation pour affiner / Use preview to fine-tune
 - Un score de netteté > 200 est excellent / A sharpness score > 200 is excellent
+- Plage typique pour PCB: 200-600 / Typical range for PCB: 200-600
 
 ### Résolution / Resolution
 
@@ -186,20 +191,22 @@ with open('app.py', 'r') as f:
 
 ## 📝 Notes de Version / Release Notes
 
-**Version:** 1.1.0
+**Version:** 1.2.0
 **Date:** 2026-02-17
 
 ### Nouvelles Fonctionnalités / New Features
 
 - ✨ Prévisualisation en direct de la caméra / Live camera preview
-- 📐 Presets de résolution prédéfinis / Predefined resolution presets
-- 🎯 Presets de focus rapides (Near/Mid/Far) / Quick focus presets
+- 📐 Presets de résolution basés sur Arducam 108MP / Resolution presets based on Arducam 108MP specs
+- 🎯 Presets de focus rapides (200/500/800 pour plage 0-1023) / Quick focus presets
 - 📊 Affichage des informations caméra en temps réel / Real-time camera information display
 - 📈 Score de netteté affiché pendant la prévisualisation / Sharpness score displayed during preview
 - 🔄 Auto-application du focus lors du changement du curseur / Auto-apply focus on slider change
 
 ### Améliorations / Improvements
 
+- **Plage de focus mise à jour:** 0-1023 (était 0-255) / **Focus range updated:** 0-1023 (was 0-255)
+- **Résolutions officielles:** Basées sur specs Arducam 108MP USB 3.0 / **Official resolutions:** Based on Arducam 108MP USB 3.0 specs
 - Interface utilisateur plus intuitive / More intuitive user interface
 - Meilleure expérience de réglage du focus / Better focus adjustment experience
 - Documentation étendue en français / Extended French documentation
