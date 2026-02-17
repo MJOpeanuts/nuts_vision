@@ -4,7 +4,7 @@ This document describes the PostgreSQL database setup for tracing all image proc
 
 ## Database Schema
 
-The database consists of 5 main tables that track the complete pipeline:
+The database consists of 6 main tables that track the complete pipeline:
 
 ### 1. `images_input`
 Stores information about uploaded/processed images.
@@ -63,6 +63,34 @@ Stores OCR results for cropped IC images.
 | rotation_angle | INTEGER | Rotation angle used (0, 90, 180, 270) |
 | confidence | FLOAT | OCR confidence score |
 | processed_at | TIMESTAMP | Processing timestamp |
+
+### 6. `camera_captures` ⭐ NEW
+Stores camera captures with camera settings and metadata.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| capture_id | SERIAL PRIMARY KEY | Unique capture identifier |
+| file_name | VARCHAR(255) | Name of captured file |
+| file_path | TEXT | Full path to captured file |
+| captured_at | TIMESTAMP | Capture timestamp |
+| camera_mode | VARCHAR(20) | Camera mode ('preview' or 'scan') |
+| resolution_width | INTEGER | Image width in pixels |
+| resolution_height | INTEGER | Image height in pixels |
+| fps | INTEGER | Frames per second setting |
+| focus_value | INTEGER | Focus value (0-1023) |
+| exposure_value | INTEGER | Exposure setting |
+| brightness | INTEGER | Brightness value (0-255) |
+| contrast | INTEGER | Contrast value (0-255) |
+| saturation | INTEGER | Saturation value (0-255) |
+| jpeg_quality | INTEGER | JPEG quality (0-100) |
+| file_size_bytes | BIGINT | File size in bytes |
+| notes | TEXT | Optional notes about the capture |
+
+**Features:**
+- Tracks all Arducam 108MP camera captures
+- Preserves camera settings for reproducibility
+- Differentiates between Preview Mode (720p@60fps) and Scan Mode (4K/Ultra HQ)
+- Indexed by capture time and camera mode for fast queries
 
 ## Quick Start with Docker
 
