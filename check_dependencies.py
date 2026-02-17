@@ -25,7 +25,7 @@ def check_python_packages():
     web_packages = [
         'streamlit',
         'fastapi',
-        'psycopg2'
+        'psycopg2'  # Installed as psycopg2-binary, imported as psycopg2
     ]
     
     missing = []
