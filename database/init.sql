@@ -63,6 +63,27 @@ CREATE TABLE IF NOT EXISTS ics_ocr (
     FOREIGN KEY (cropped_id) REFERENCES ics_cropped(cropped_id) ON DELETE CASCADE
 );
 
+-- Table: camera_captures
+-- Stores camera captures with camera settings and metadata
+CREATE TABLE IF NOT EXISTS camera_captures (
+    capture_id SERIAL PRIMARY KEY,
+    file_name VARCHAR(255) NOT NULL,
+    file_path TEXT NOT NULL,
+    captured_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    camera_mode VARCHAR(20) CHECK (camera_mode IN ('preview', 'scan')),
+    resolution_width INTEGER,
+    resolution_height INTEGER,
+    fps INTEGER,
+    focus_value INTEGER,
+    exposure_value INTEGER,
+    brightness INTEGER,
+    contrast INTEGER,
+    saturation INTEGER,
+    jpeg_quality INTEGER,
+    file_size_bytes BIGINT,
+    notes TEXT
+);
+
 -- Create indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_log_jobs_image_id ON log_jobs(image_id);
 CREATE INDEX IF NOT EXISTS idx_detections_job_id ON detections(job_id);
@@ -70,3 +91,5 @@ CREATE INDEX IF NOT EXISTS idx_ics_cropped_job_id ON ics_cropped(job_id);
 CREATE INDEX IF NOT EXISTS idx_ics_cropped_detection_id ON ics_cropped(detection_id);
 CREATE INDEX IF NOT EXISTS idx_ics_ocr_job_id ON ics_ocr(job_id);
 CREATE INDEX IF NOT EXISTS idx_ics_ocr_cropped_id ON ics_ocr(cropped_id);
+CREATE INDEX IF NOT EXISTS idx_camera_captures_captured_at ON camera_captures(captured_at);
+CREATE INDEX IF NOT EXISTS idx_camera_captures_mode ON camera_captures(camera_mode);

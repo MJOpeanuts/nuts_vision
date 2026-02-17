@@ -453,6 +453,120 @@ class DatabaseManager:
                 result = dict(stats) if stats else {}
                 result['component_counts'] = component_counts
                 return result
+    
+    def log_camera_capture(
+        self,
+        file_name: str,
+        file_path: str,
+        camera_mode: str,
+        resolution_width: int,
+        resolution_height: int,
+        fps: int,
+        focus_value: int = None,
+        exposure_value: int = None,
+        brightness: int = None,
+        contrast: int = None,
+        saturation: int = None,
+        jpeg_quality: int = None,
+        file_size_bytes: int = None,
+        notes: str = None
+    ) -> int:
+        """
+        Log a camera capture to the database.
+        
+        Args:
+            file_name: Name of the captured file
+            file_path: Full path to the captured file
+            camera_mode: Camera mode ('preview' or 'scan')
+            resolution_width: Width of the captured image
+            resolution_height: Height of the captured image
+            fps: Frames per second setting
+            focus_value: Focus value (0-1023)
+            exposure_value: Exposure value
+            brightness: Brightness value (0-255)
+            contrast: Contrast value (0-255)
+            saturation: Saturation value (0-255)
+            jpeg_quality: JPEG quality (0-100)
+            file_size_bytes: File size in bytes
+            notes: Optional notes about the capture
+            
+        Returns:
+            capture_id of the inserted record
+        """
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO camera_captures 
+                    (file_name, file_path, camera_mode, resolution_width, resolution_height,
+                     fps, focus_value, exposure_value, brightness, contrast, saturation,
+                     jpeg_quality, file_size_bytes, notes)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING capture_id
+                    """,
+                    (file_name, file_path, camera_mode, resolution_width, resolution_height,
+                     fps, focus_value, exposure_value, brightness, contrast, saturation,
+                     jpeg_quality, file_size_bytes, notes)
+                )
+                capture_id = cursor.fetchone()[0]
+                return capture_id
+    
+    def get_all_camera_captures(self, limit: int = 100, camera_mode: str = None) -> List[Dict[str, Any]]:
+        """
+        Get all camera captures, optionally filtered by mode.
+        
+        Args:
+            limit: Maximum number of records to return
+            camera_mode: Optional camera mode filter ('preview' or 'scan')
+            
+        Returns:
+            List of camera capture records
+        """
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                if camera_mode:
+                    cursor.execute(
+                        """
+                        SELECT * FROM camera_captures
+                        WHERE camera_mode = %s
+                        ORDER BY captured_at DESC
+                        LIMIT %s
+                        """,
+                        (camera_mode, limit)
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        SELECT * FROM camera_captures
+                        ORDER BY captured_at DESC
+                        LIMIT %s
+                        """,
+                        (limit,)
+                    )
+                return [dict(row) for row in cursor.fetchall()]
+    
+    def get_camera_capture_statistics(self) -> Dict[str, Any]:
+        """
+        Get statistics about camera captures.
+        
+        Returns:
+            Dictionary with capture statistics
+        """
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT 
+                        COUNT(*) as total_captures,
+                        COUNT(CASE WHEN camera_mode = 'preview' THEN 1 END) as preview_captures,
+                        COUNT(CASE WHEN camera_mode = 'scan' THEN 1 END) as scan_captures,
+                        AVG(file_size_bytes) as avg_file_size,
+                        MAX(captured_at) as last_capture_time
+                    FROM camera_captures
+                    """
+                )
+                stats = cursor.fetchone()
+                return dict(stats) if stats else {}
 
 
 def get_db_manager_from_env() -> DatabaseManager:
