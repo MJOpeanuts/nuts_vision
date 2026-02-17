@@ -280,6 +280,179 @@ class DatabaseManager:
         except Exception as e:
             print(f"Database connection failed: {e}")
             return False
+    
+    def get_all_images(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """
+        Get all uploaded images.
+        
+        Args:
+            limit: Maximum number of records to return
+            
+        Returns:
+            List of image records
+        """
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT * FROM images_input
+                    ORDER BY upload_at DESC
+                    LIMIT %s
+                    """,
+                    (limit,)
+                )
+                return [dict(row) for row in cursor.fetchall()]
+    
+    def get_all_jobs(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """
+        Get all jobs with image information.
+        
+        Args:
+            limit: Maximum number of records to return
+            
+        Returns:
+            List of job records
+        """
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT 
+                        j.*,
+                        i.file_name,
+                        i.file_path,
+                        i.format,
+                        COUNT(DISTINCT d.detection_id) as detection_count
+                    FROM log_jobs j
+                    JOIN images_input i ON j.image_id = i.image_id
+                    LEFT JOIN detections d ON j.job_id = d.job_id
+                    GROUP BY j.job_id, i.file_name, i.file_path, i.format
+                    ORDER BY j.started_at DESC
+                    LIMIT %s
+                    """,
+                    (limit,)
+                )
+                return [dict(row) for row in cursor.fetchall()]
+    
+    def get_all_detections(self, job_id: int = None, limit: int = 100) -> List[Dict[str, Any]]:
+        """
+        Get all detections, optionally filtered by job.
+        
+        Args:
+            job_id: Optional job ID to filter by
+            limit: Maximum number of records to return
+            
+        Returns:
+            List of detection records
+        """
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                if job_id:
+                    cursor.execute(
+                        """
+                        SELECT * FROM detections
+                        WHERE job_id = %s
+                        ORDER BY detection_id DESC
+                        LIMIT %s
+                        """,
+                        (job_id, limit)
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        SELECT * FROM detections
+                        ORDER BY detection_id DESC
+                        LIMIT %s
+                        """,
+                        (limit,)
+                    )
+                return [dict(row) for row in cursor.fetchall()]
+    
+    def get_all_ocr_results(self, job_id: int = None, limit: int = 100) -> List[Dict[str, Any]]:
+        """
+        Get all OCR results, optionally filtered by job.
+        
+        Args:
+            job_id: Optional job ID to filter by
+            limit: Maximum number of records to return
+            
+        Returns:
+            List of OCR records with cropped image paths
+        """
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                if job_id:
+                    cursor.execute(
+                        """
+                        SELECT 
+                            o.*,
+                            ic.cropped_file_path,
+                            d.class_name
+                        FROM ics_ocr o
+                        JOIN ics_cropped ic ON o.cropped_id = ic.cropped_id
+                        JOIN detections d ON ic.detection_id = d.detection_id
+                        WHERE o.job_id = %s
+                        ORDER BY o.processed_at DESC
+                        LIMIT %s
+                        """,
+                        (job_id, limit)
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        SELECT 
+                            o.*,
+                            ic.cropped_file_path,
+                            d.class_name
+                        FROM ics_ocr o
+                        JOIN ics_cropped ic ON o.cropped_id = ic.cropped_id
+                        JOIN detections d ON ic.detection_id = d.detection_id
+                        ORDER BY o.processed_at DESC
+                        LIMIT %s
+                        """,
+                        (limit,)
+                    )
+                return [dict(row) for row in cursor.fetchall()]
+    
+    def get_detection_statistics(self) -> Dict[str, Any]:
+        """
+        Get overall detection statistics.
+        
+        Returns:
+            Dictionary with statistics
+        """
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT 
+                        COUNT(DISTINCT i.image_id) as total_images,
+                        COUNT(DISTINCT j.job_id) as total_jobs,
+                        COUNT(DISTINCT d.detection_id) as total_detections,
+                        COUNT(DISTINCT o.ocr_id) as total_ocr_results,
+                        COUNT(DISTINCT CASE WHEN o.cleaned_mpn IS NOT NULL AND o.cleaned_mpn != '' THEN o.ocr_id END) as successful_mpn_extractions
+                    FROM images_input i
+                    LEFT JOIN log_jobs j ON i.image_id = j.image_id
+                    LEFT JOIN detections d ON j.job_id = d.job_id
+                    LEFT JOIN ics_ocr o ON j.job_id = o.job_id
+                    """
+                )
+                stats = cursor.fetchone()
+                
+                # Get component counts
+                cursor.execute(
+                    """
+                    SELECT class_name, COUNT(*) as count
+                    FROM detections
+                    GROUP BY class_name
+                    ORDER BY count DESC
+                    """
+                )
+                component_counts = {row['class_name']: row['count'] for row in cursor.fetchall()}
+                
+                result = dict(stats) if stats else {}
+                result['component_counts'] = component_counts
+                return result
 
 
 def get_db_manager_from_env() -> DatabaseManager:

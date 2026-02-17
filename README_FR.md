@@ -68,7 +68,33 @@ pip install -r requirements.txt
 
 ## Démarrage Rapide
 
-### 1. Entraîner le Modèle
+### Option A: Interface Web (Recommandé)
+
+L'interface web fournit une interface graphique moderne pour télécharger des images, lancer le traitement et visualiser les résultats dans une base de données de type Supabase.
+
+```bash
+# 1. Démarrer la base de données PostgreSQL
+docker-compose up -d
+
+# 2. Lancer l'interface web
+./start_web.sh         # Linux/Mac
+# ou
+start_web.bat          # Windows
+```
+
+L'application s'ouvrira à `http://localhost:8501`
+
+**Fonctionnalités de l'interface web:**
+- 📤 Téléchargement et traitement d'images
+- 🗄️ Visualiseur de base de données type Supabase
+- 📊 Statistiques et analyses
+- 📷 Aperçu des images et résultats
+
+Pour plus de détails, consultez [INTERFACE_WEB.md](INTERFACE_WEB.md)
+
+### Option B: Ligne de Commande
+
+#### 1. Entraîner le Modèle
 
 D'abord, assurez-vous d'avoir le dataset prêt, puis entraînez le modèle YOLO:
 
@@ -78,7 +104,7 @@ python src/train.py --data data.yaml --epochs 100 --model-size n
 
 Cela créera un modèle entraîné dans `runs/detect/component_detector/weights/best.pt`
 
-### 2. Exécuter le Pipeline Complet
+#### 2. Exécuter le Pipeline Complet
 
 Traitez des images de cartes électroniques et extrayez les informations des composants:
 
@@ -97,7 +123,7 @@ Cela va:
 4. Générer des visualisations et statistiques
 5. Sauvegarder les résultats en fichiers CSV et JSON
 
-### 3. Test Simple avec une Photo
+#### 3. Test Simple avec une Photo
 
 Pour un test rapide:
 
