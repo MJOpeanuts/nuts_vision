@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import pytesseract
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 import re
 import json
 
@@ -107,7 +107,7 @@ class ComponentOCR:
         image: np.ndarray, 
         use_multiple_preprocessing: bool = True,
         use_rotation: bool = True
-    ) -> Dict[str, any]:
+    ) -> Dict[str, Any]:
         """
         Extract text from image using OCR with multiple rotations.
         
@@ -191,7 +191,7 @@ class ComponentOCR:
         self, 
         image_path: str,
         component_type: Optional[str] = None
-    ) -> Dict[str, any]:
+    ) -> Dict[str, Any]:
         """
         Process a single component image and extract MPN.
         

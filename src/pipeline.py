@@ -183,7 +183,7 @@ class ComponentAnalysisPipeline:
             
             # Step 3: OCR (if requested)
             if extract_mpn and detections:
-                print("\n[STEP 3/4] Extracting MPNs using OCR...")
+                print("\n[STEP 3/5] Extracting MPNs using OCR...")
                 print("-"*60)
                 
                 # Process only IC images
@@ -223,7 +223,7 @@ class ComponentAnalysisPipeline:
         # Step 4: Compile all OCR results (if requested)
         ocr_df = None
         if extract_mpn:
-            print("\n[STEP 3/4] Compiling OCR results...")
+            print("\n[STEP 4/5] Compiling OCR results...")
             print("-"*60)
             
             ocr_df = self.ocr.process_directory(
@@ -237,11 +237,11 @@ class ComponentAnalysisPipeline:
                 successful_mpn = ocr_df[ocr_df['mpn'].notna() & (ocr_df['mpn'] != '')].shape[0]
                 print(f"\nExtracted MPNs: {successful_mpn}/{len(ocr_df)}")
         else:
-            print("\n[STEP 3/4] Skipping OCR (--no-ocr flag set)")
+            print("\n[STEP 4/5] Skipping OCR compilation (--no-ocr flag set)")
         
         # Step 5: Visualization (if requested)
         if create_visualizations:
-            print("\n[STEP 4/4] Creating visualizations...")
+            print("\n[STEP 5/5] Creating visualizations...")
             print("-"*60)
             
             # Detection statistics
@@ -261,7 +261,7 @@ class ComponentAnalysisPipeline:
                         save_path=str(viz_dir / "ocr_results.png")
                     )
         else:
-            print("\n[STEP 4/4] Skipping visualizations (--no-viz flag set)")
+            print("\n[STEP 5/5] Skipping visualizations (--no-viz flag set)")
         
         # Summary
         print("\n" + "="*60)
