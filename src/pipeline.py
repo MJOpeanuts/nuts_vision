@@ -193,7 +193,7 @@ class ComponentAnalysisPipeline:
                     try:
                         result = self.ocr.process_component_image(str(ic_image), component_type)
                         if result['mpn']:
-                            print(f"  {ic_image.name}: {result['mpn']} (angle: {result['rotation_angle']}°)")
+                            print(f"  {ic_image.name}: {result['mpn']} (angle: {result['rotation_angle']}°, conf: {result['confidence']:.1f})")
                             
                             # Database: Log OCR result
                             if self.use_database and job_id and str(ic_image) in cropped_ids:
