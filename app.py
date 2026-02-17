@@ -999,7 +999,7 @@ elif page == "📷 Camera Control":
         with col_prev_status:
             if st.session_state.camera_mode == 'preview':
                 if st.session_state.live_preview_active:
-                    st.success("🔴 **Live preview active at 1280x720@60fps** - Adjust all settings and see results in real-time")
+                    st.success("🔴 **Live preview active at 1280x720 @ 60fps** - Adjust all settings and see results in real-time")
                 else:
                     st.info("⚪ Click 'Start Live Preview' for smooth 60fps real-time preview")
             else:
