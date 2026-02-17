@@ -1,6 +1,19 @@
 # Quick Start Guide - nuts_vision Web Interface
 
-## 🚀 Getting Started in 3 Steps
+## 🚀 Getting Started in 4 Steps
+
+### Step 0: Install Dependencies (First Time Only)
+
+```bash
+# Install web interface dependencies
+pip install streamlit fastapi psycopg2-binary
+
+# Or install all dependencies from requirements.txt
+pip install -r requirements.txt
+
+# Verify installation
+python check_dependencies.py
+```
 
 ### Step 1: Start the Database
 
