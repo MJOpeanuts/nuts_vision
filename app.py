@@ -249,9 +249,10 @@ elif page == "📤 Upload & Process":
         if not Path(model_path).exists():
             st.error(f"Model file not found: {model_path}")
         else:
-            # Create temp directory for uploads
-            upload_dir = Path("uploads")
-            upload_dir.mkdir(exist_ok=True)
+            # Create persistent directory for uploaded images
+            # Store in outputs/images_input so they persist with other outputs
+            upload_dir = Path("outputs") / "images_input"
+            upload_dir.mkdir(parents=True, exist_ok=True)
             
             progress_bar = st.progress(0)
             status_text = st.empty()
@@ -273,28 +274,31 @@ elif page == "📤 Upload & Process":
                     status_text.text(f"Processing {uploaded_file.name} ({idx+1}/{total_files})...")
                     progress_bar.progress((idx) / total_files)
                     
-                    # Save uploaded file
+                    # Save uploaded file to persistent location with absolute path
                     file_path = upload_dir / uploaded_file.name
                     with open(file_path, "wb") as f:
                         f.write(uploaded_file.getbuffer())
                     
-                    # Run pipeline
+                    # Convert to absolute path for storage
+                    absolute_file_path = file_path.resolve()
+                    
+                    # Run pipeline with absolute path
                     try:
                         pipeline.run_pipeline(
-                            image_path=str(file_path),
+                            image_path=str(absolute_file_path),
                             extract_mpn=extract_mpn,
                             create_visualizations=create_viz
                         )
                         results_summary.append({
                             'file': uploaded_file.name,
                             'status': '✅ Success',
-                            'path': str(file_path)
+                            'path': str(absolute_file_path)
                         })
                     except Exception as e:
                         results_summary.append({
                             'file': uploaded_file.name,
                             'status': f'❌ Error: {str(e)}',
-                            'path': str(file_path)
+                            'path': str(absolute_file_path)
                         })
                 
                 progress_bar.progress(1.0)
@@ -310,6 +314,7 @@ elif page == "📤 Upload & Process":
                 # Show output location
                 st.info("""
                 📁 **Output Location**: `outputs/`
+                - Uploaded images: `outputs/images_input/`
                 - Detection results: `outputs/results/`
                 - Cropped components: `outputs/cropped_components/`
                 - Visualizations: `outputs/visualizations/`
