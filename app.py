@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 try:
     from database import get_db_manager_from_env
     from pipeline import ComponentAnalysisPipeline
+    from psycopg2.extras import RealDictCursor
     DB_AVAILABLE = True
 except ImportError as e:
     st.error(f"Error importing modules: {e}")
@@ -96,7 +97,7 @@ st.sidebar.markdown("---")
 
 page = st.sidebar.radio(
     "Navigation",
-    ["🏠 Home", "📤 Upload & Process", "🗄️ Database Viewer", "📊 Statistics", "ℹ️ About"]
+    ["🏠 Home", "📤 Upload & Process", "🔍 Job Viewer", "🗄️ Database Viewer", "📊 Statistics", "ℹ️ About"]
 )
 
 st.sidebar.markdown("---")
@@ -329,6 +330,198 @@ elif page == "📤 Upload & Process":
             with cols[idx % 3]:
                 image = Image.open(uploaded_file)
                 st.image(image, caption=uploaded_file.name, use_container_width=True)
+
+
+# ========== JOB VIEWER PAGE ==========
+elif page == "🔍 Job Viewer":
+    st.markdown('<div class="main-header">🔍 Job Viewer</div>', unsafe_allow_html=True)
+    st.markdown("### View Saved Jobs with Images and OCR Results")
+    
+    if not st.session_state.get('db_connected', False):
+        st.error("""
+        ❌ **Database not connected!**
+        
+        Please ensure PostgreSQL is running and properly configured.
+        
+        **Quick Start with Docker:**
+        ```bash
+        docker-compose up -d
+        ```
+        """)
+    else:
+        try:
+            # Get all jobs
+            all_jobs = st.session_state.db.get_all_jobs()
+            
+            if not all_jobs:
+                st.info("No jobs found in database. Process some images first!")
+            else:
+                # Job selector
+                st.markdown("### Select a Job")
+                
+                # Create a more readable job list
+                job_options = []
+                job_mapping = {}
+                for job in all_jobs:
+                    job_label = f"Job {job['job_id']} - {job['file_name']} ({job['detection_count']} detections)"
+                    job_options.append(job_label)
+                    job_mapping[job_label] = job
+                
+                selected_job_label = st.selectbox(
+                    "Choose a job to view details",
+                    job_options,
+                    help="Select a job to view its original image, cropped components, and OCR results"
+                )
+                
+                if selected_job_label:
+                    selected_job = job_mapping[selected_job_label]
+                    job_id = selected_job['job_id']
+                    
+                    # Display job information
+                    st.markdown("---")
+                    st.markdown("### 📋 Job Information")
+                    
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("Job ID", job_id)
+                    with col2:
+                        st.metric("Detections", selected_job['detection_count'])
+                    with col3:
+                        started = pd.to_datetime(selected_job['started_at']).strftime('%Y-%m-%d %H:%M:%S')
+                        st.metric("Started", started)
+                    with col4:
+                        if selected_job['ended_at']:
+                            ended = pd.to_datetime(selected_job['ended_at']).strftime('%Y-%m-%d %H:%M:%S')
+                            st.metric("Ended", ended)
+                        else:
+                            st.metric("Status", "Running")
+                    
+                    # Display original image
+                    st.markdown("---")
+                    st.markdown("### 📸 Original Image")
+                    
+                    original_image_path = selected_job['file_path']
+                    if os.path.exists(original_image_path):
+                        try:
+                            original_image = Image.open(original_image_path)
+                            st.image(original_image, caption=f"Original: {selected_job['file_name']}", use_container_width=True)
+                        except Exception as e:
+                            st.error(f"Error loading original image: {e}")
+                    else:
+                        st.warning(f"Original image not found at: {original_image_path}")
+                    
+                    # Get cropped ICs and OCR results for this job
+                    with st.session_state.db.get_connection() as conn:
+                        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                            cursor.execute("""
+                                SELECT 
+                                    ic.cropped_id,
+                                    ic.cropped_file_path,
+                                    ic.created_at,
+                                    d.class_name,
+                                    d.confidence,
+                                    d.bbox_x1,
+                                    d.bbox_y1,
+                                    d.bbox_x2,
+                                    d.bbox_y2,
+                                    o.ocr_id,
+                                    o.raw_text,
+                                    o.cleaned_mpn,
+                                    o.rotation_angle,
+                                    o.processed_at
+                                FROM ics_cropped ic
+                                JOIN detections d ON ic.detection_id = d.detection_id
+                                LEFT JOIN ics_ocr o ON ic.cropped_id = o.cropped_id
+                                WHERE ic.job_id = %s
+                                ORDER BY ic.cropped_id
+                            """, (job_id,))
+                            cropped_ics = [dict(row) for row in cursor.fetchall()]
+                    
+                    # Display cropped ICs and OCR results
+                    if cropped_ics:
+                        st.markdown("---")
+                        st.markdown(f"### ✂️ Cropped IC Components ({len(cropped_ics)} total)")
+                        
+                        # Display in a grid
+                        for idx, ic in enumerate(cropped_ics, 1):
+                            with st.expander(f"🔍 IC #{idx} - {ic['class_name']} (Confidence: {ic['confidence']:.2f})", expanded=(idx == 1)):
+                                col1, col2 = st.columns([1, 2])
+                                
+                                with col1:
+                                    # Display cropped image
+                                    cropped_path = ic['cropped_file_path']
+                                    if os.path.exists(cropped_path):
+                                        try:
+                                            cropped_img = Image.open(cropped_path)
+                                            st.image(cropped_img, caption=f"Cropped IC #{idx}", use_container_width=True)
+                                        except Exception as e:
+                                            st.error(f"Error loading cropped image: {e}")
+                                    else:
+                                        st.warning(f"Cropped image not found")
+                                    
+                                    # Show bounding box info
+                                    st.markdown("**Bounding Box:**")
+                                    st.text(f"X1: {ic['bbox_x1']:.1f}, Y1: {ic['bbox_y1']:.1f}")
+                                    st.text(f"X2: {ic['bbox_x2']:.1f}, Y2: {ic['bbox_y2']:.1f}")
+                                
+                                with col2:
+                                    # Display OCR results
+                                    st.markdown("**OCR Results:**")
+                                    
+                                    if ic['ocr_id']:
+                                        # MPN (cleaned)
+                                        if ic['cleaned_mpn']:
+                                            st.success(f"**MPN:** {ic['cleaned_mpn']}")
+                                        else:
+                                            st.warning("**MPN:** Not extracted")
+                                        
+                                        # Raw text
+                                        if ic['raw_text']:
+                                            st.markdown("**Raw OCR Text:**")
+                                            st.code(ic['raw_text'], language=None)
+                                        else:
+                                            st.info("No text detected")
+                                        
+                                        # Rotation angle
+                                        if ic['rotation_angle'] is not None:
+                                            st.text(f"Rotation: {ic['rotation_angle']}°")
+                                        
+                                        # Processing time
+                                        if ic['processed_at']:
+                                            processed_time = pd.to_datetime(ic['processed_at']).strftime('%Y-%m-%d %H:%M:%S')
+                                            st.text(f"Processed: {processed_time}")
+                                    else:
+                                        st.info("No OCR results available for this component")
+                                    
+                                    # File path
+                                    st.markdown("**File Path:**")
+                                    st.text(cropped_path)
+                        
+                        # Summary statistics
+                        st.markdown("---")
+                        st.markdown("### 📊 Summary")
+                        
+                        total_ics = len(cropped_ics)
+                        with_ocr = sum(1 for ic in cropped_ics if ic['ocr_id'] is not None)
+                        with_mpn = sum(1 for ic in cropped_ics if ic['cleaned_mpn'])
+                        
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("Total ICs", total_ics)
+                        with col2:
+                            st.metric("OCR Processed", with_ocr)
+                        with col3:
+                            st.metric("MPNs Extracted", with_mpn)
+                            if with_ocr > 0:
+                                success_rate = (with_mpn / with_ocr) * 100
+                                st.caption(f"Success Rate: {success_rate:.1f}%")
+                    else:
+                        st.info("No cropped IC components found for this job.")
+                        
+        except Exception as e:
+            st.error(f"Error loading job data: {str(e)}")
+            import traceback
+            st.code(traceback.format_exc())
 
 
 # ========== DATABASE VIEWER PAGE ==========
