@@ -15,6 +15,8 @@ from datetime import datetime
 import os
 from PIL import Image
 import json
+import time
+import cv2
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -836,18 +838,47 @@ elif page == "📷 Camera Control":
         camera_index = st.number_input("Camera Index", min_value=0, max_value=10, value=0, 
                                        help="Device index for the camera (usually 0)")
         
-        col_w, col_h, col_f = st.columns(3)
-        with col_w:
-            width = st.selectbox("Width", [640, 1280, 1920, 2560, 3840], index=2)
-        with col_h:
-            height = st.selectbox("Height", [480, 720, 1080, 1440, 2160], index=2)
-        with col_f:
-            fps = st.selectbox("FPS", [10, 15, 20, 30], index=3)
+        # Resolution presets for Arducam 108MP USB 3.0 Camera
+        # Based on official specs: 720p@60fps, 4K@10fps, 4000x3000@7fps, 12MP@1fps
+        resolution_presets = {
+            "HD 720p@60fps - Fast & Smooth": (1280, 720, 60),
+            "4K UHD@10fps - High Quality": (3840, 2160, 10),
+            "4000x3000@7fps - Ultra High Quality": (4000, 3000, 7),
+            "HD 720p@30fps - Preview": (1280, 720, 30),
+            "VGA@30fps - Low Quality": (640, 480, 30),
+            "Custom": None
+        }
+        
+        selected_preset = st.selectbox(
+            "Resolution Preset",
+            list(resolution_presets.keys()),
+            index=0,  # Default to HD 720p@60fps
+            help="Choose a preset based on Arducam 108MP specs or select Custom"
+        )
+        
+        if resolution_presets[selected_preset] is None:  # Custom
+            col_w, col_h, col_f = st.columns(3)
+            with col_w:
+                width = st.number_input("Width", min_value=640, max_value=12000, value=1280, step=64)
+            with col_h:
+                height = st.number_input("Height", min_value=480, max_value=9000, value=720, step=64)
+            with col_f:
+                fps = st.selectbox("FPS", [1, 7, 10, 15, 30, 60], index=4)
+        else:
+            width, height, fps = resolution_presets[selected_preset]
+            st.info(f"📐 Resolution: {width}x{height} @ {fps}fps")
     
     with col2:
         st.markdown("**Status:**")
         if st.session_state.camera_connected:
             st.success("✅ Connected")
+            # Display current camera info
+            if st.session_state.camera:
+                info = st.session_state.camera.get_camera_info()
+                if info.get('connected'):
+                    st.markdown(f"**Resolution:** {info['width']}x{info['height']}")
+                    st.markdown(f"**FPS:** {info['fps']}")
+                    st.markdown(f"**Focus:** {info['focus']}")
         else:
             st.warning("⚠️ Not Connected")
     
@@ -892,6 +923,11 @@ elif page == "📷 Camera Control":
         # Focus Control Section
         st.markdown('<div class="sub-header">🎯 Focus Control</div>', unsafe_allow_html=True)
         
+        st.markdown("""
+        Adjust the camera focus manually using the slider below, or use auto-focus to automatically 
+        find the optimal focus value. **Tip:** Enable live preview above to see focus changes in real-time!
+        """)
+        
         col_focus1, col_focus2 = st.columns([3, 1])
         
         with col_focus1:
@@ -900,49 +936,142 @@ elif page == "📷 Camera Control":
             if current_focus is None:
                 current_focus = 0
             
-            focus_value = st.slider("Focus Value", min_value=0, max_value=255, 
+            focus_value = st.slider("Focus Value", min_value=0, max_value=1023, 
                                     value=int(current_focus), step=1,
-                                    help="Adjust the motorized focus (0 = near, 255 = far)")
+                                    help="Adjust the motorized focus (0 = near, 1023 = far) - Arducam 108MP range")
             
-            if st.button("Apply Focus"):
+            # Auto-apply focus when slider changes
+            if focus_value != int(current_focus):
                 st.session_state.camera.set_focus(focus_value)
-                st.success(f"Focus set to {focus_value}")
+                if not st.session_state.live_preview_active:
+                    st.info(f"Focus set to {focus_value}. Enable live preview to see the effect in real-time!")
         
         with col_focus2:
             st.markdown("**Auto Focus**")
             if st.button("🔍 Auto Focus Scan"):
-                with st.spinner("Scanning for optimal focus..."):
-                    progress_bar = st.progress(0)
-                    status_text = st.empty()
+                with st.spinner("Scanning for optimal focus... This may take 15-30 seconds"):
+                    # Temporarily disable live preview during auto-focus
+                    was_live = st.session_state.live_preview_active
+                    st.session_state.live_preview_active = False
                     
                     # Perform auto-focus
                     best_focus, sharpness = st.session_state.camera.auto_focus_scan(
-                        start=0, end=255, step=20
+                        start=0, end=1023, step=50
                     )
                     
-                    progress_bar.progress(100)
-                    status_text.success(f"✅ Optimal focus found: {best_focus} (sharpness: {sharpness:.2f})")
+                    st.success(f"✅ Optimal focus: {best_focus} (sharpness: {sharpness:.2f})")
+                    
+                    # Restore live preview state
+                    st.session_state.live_preview_active = was_live
+                    
+                    # Trigger a rerun to update the slider
+                    st.rerun()
+            
+            st.markdown("**Focus Presets**")
+            col_near, col_mid, col_far = st.columns(3)
+            with col_near:
+                if st.button("📍 Near", help="Focus for close objects (~10cm)"):
+                    st.session_state.camera.set_focus(200)
+                    st.rerun()
+            with col_mid:
+                if st.button("📍 Mid", help="Focus for medium distance (~20cm)"):
+                    st.session_state.camera.set_focus(500)
+                    st.rerun()
+            with col_far:
+                if st.button("📍 Far", help="Focus for distant objects (~30cm+)"):
+                    st.session_state.camera.set_focus(800)
+                    st.rerun()
         
         st.markdown("---")
         
         # Preview Section
         st.markdown('<div class="sub-header">👁️ Live Preview</div>', unsafe_allow_html=True)
         
-        col_prev1, col_prev2 = st.columns([3, 1])
+        st.markdown("""
+        Use live preview to adjust focus in real-time. The preview will continuously update 
+        to show the current camera view, making it easier to find the optimal focus setting.
+        """)
         
-        with col_prev1:
-            preview_placeholder = st.empty()
+        # Initialize preview state
+        if 'live_preview_active' not in st.session_state:
+            st.session_state.live_preview_active = False
         
-        with col_prev2:
-            if st.button("📸 Capture Frame"):
-                frame = st.session_state.camera.capture_frame()
-                if frame is not None:
-                    # Convert BGR to RGB for display
-                    import cv2
-                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    preview_placeholder.image(frame_rgb, caption="Captured Frame", use_container_width=True)
-                else:
-                    st.error("Failed to capture frame")
+        col_prev_ctrl, col_prev_status = st.columns([1, 3])
+        
+        with col_prev_ctrl:
+            # Toggle live preview
+            if st.button("▶️ Start Live Preview" if not st.session_state.live_preview_active else "⏸️ Stop Live Preview"):
+                st.session_state.live_preview_active = not st.session_state.live_preview_active
+                st.rerun()
+            
+            # Single frame capture
+            if st.button("📸 Capture Single Frame"):
+                st.session_state.capture_single_frame = True
+            
+            # Refresh rate control
+            if st.session_state.live_preview_active:
+                refresh_rate = st.select_slider(
+                    "Refresh Rate",
+                    options=[0.1, 0.3, 0.5, 1.0, 2.0],
+                    value=st.session_state.preview_refresh_rate,
+                    format_func=lambda x: f"{x}s ({1/x:.1f} FPS)" if x > 0 else "Max",
+                    help="Control how often the preview updates (lower = faster but more CPU)"
+                )
+                if refresh_rate != st.session_state.preview_refresh_rate:
+                    st.session_state.preview_refresh_rate = refresh_rate
+        
+        with col_prev_status:
+            if st.session_state.live_preview_active:
+                st.info("🔴 Live preview is running. Adjust focus slider below to see changes in real-time.")
+            else:
+                st.info("⚪ Live preview is stopped. Click 'Start Live Preview' to begin.")
+        
+        # Preview display area
+        preview_placeholder = st.empty()
+        
+        # Refresh rate control for live preview
+        if 'preview_refresh_rate' not in st.session_state:
+            st.session_state.preview_refresh_rate = 0.5  # seconds
+        
+        # Live preview loop
+        if st.session_state.live_preview_active:
+            frame = st.session_state.camera.capture_frame()
+            if frame is not None:
+                # Convert BGR to RGB for display
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                
+                # Calculate sharpness for focus feedback
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                sharpness = cv2.Laplacian(gray, cv2.CV_64F).var()
+                
+                preview_placeholder.image(
+                    frame_rgb, 
+                    caption=f"Live Preview - Sharpness: {sharpness:.2f} (higher is sharper)",
+                    use_container_width=True
+                )
+                
+                # Configurable refresh delay to control CPU/network usage
+                time.sleep(st.session_state.preview_refresh_rate)
+                st.rerun()
+            else:
+                st.error("Failed to capture frame from camera")
+                st.session_state.live_preview_active = False
+        elif st.session_state.get('capture_single_frame', False):
+            # Capture and display single frame
+            frame = st.session_state.camera.capture_frame()
+            if frame is not None:
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                
+                # Calculate sharpness
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                sharpness = cv2.Laplacian(gray, cv2.CV_64F).var()
+                
+                preview_placeholder.image(
+                    frame_rgb, 
+                    caption=f"Single Frame - Sharpness: {sharpness:.2f}",
+                    use_container_width=True
+                )
+            st.session_state.capture_single_frame = False
         
         st.markdown("---")
         

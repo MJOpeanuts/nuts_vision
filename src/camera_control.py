@@ -1,10 +1,22 @@
 #!/usr/bin/env python3
 """
 Arducam 108MP Camera Control Module
+
 Provides functionality to:
-- Connect to Arducam 108MP camera
-- Control motorized focus
+- Connect to Arducam 108MP USB 3.0 camera
+- Control motorized focus (range: 0-1023)
 - Capture high-resolution photos
+
+Camera Specifications (Arducam 108MP):
+- Sensor: 1/1.52" CMOS
+- Max Resolution: 12000x9000 (108MP)
+- Field of View: 85°(D)
+- Supported Frame Rates (USB 3.0):
+  * 1280x720@60fps (HD - Smooth video)
+  * 3840x2160@10fps (4K UHD)
+  * 4000x3000@7fps (Ultra high quality)
+  * 12000x9000@1fps (108MP - requires demo app)
+- Focus Range: 0-1023 (motorized)
 """
 
 import cv2
@@ -92,7 +104,7 @@ class ArducamCamera:
         Set the motorized focus
         
         Args:
-            focus_value: Focus value (typically 0-255, camera-dependent)
+            focus_value: Focus value (0-1023 for Arducam 108MP)
             
         Returns:
             True if successful, False otherwise
@@ -220,14 +232,14 @@ class ArducamCamera:
         
         return info
     
-    def auto_focus_scan(self, start: int = 0, end: int = 255, step: int = 10) -> Tuple[int, float]:
+    def auto_focus_scan(self, start: int = 0, end: int = 1023, step: int = 50) -> Tuple[int, float]:
         """
         Scan focus range to find optimal focus point using sharpness metric
         
         Args:
-            start: Start focus value
-            end: End focus value
-            step: Step size
+            start: Start focus value (default: 0)
+            end: End focus value (default: 1023 for Arducam 108MP)
+            step: Step size (default: 50)
             
         Returns:
             Tuple of (best_focus_value, best_sharpness_score)
@@ -280,8 +292,8 @@ def main():
     # Create camera instance
     camera = ArducamCamera(camera_index=0)
     
-    # Connect to camera
-    if not camera.connect(width=1920, height=1080, fps=30):
+    # Connect to camera with Arducam 108MP recommended settings
+    if not camera.connect(width=1280, height=720, fps=60):
         print("Failed to connect to camera")
         return
     
@@ -291,15 +303,15 @@ def main():
     for key, value in info.items():
         print(f"  {key}: {value}")
     
-    # Test focus control
+    # Test focus control with 0-1023 range
     print("\nTesting focus control...")
-    for focus in [0, 50, 100, 150, 200, 255]:
+    for focus in [0, 200, 400, 600, 800, 1023]:
         camera.set_focus(focus)
         time.sleep(1)
     
-    # Auto-focus scan
+    # Auto-focus scan with 0-1023 range
     print("\nPerforming auto-focus scan...")
-    best_focus, sharpness = camera.auto_focus_scan(start=0, end=255, step=20)
+    best_focus, sharpness = camera.auto_focus_scan(start=0, end=1023, step=50)
     
     # Capture a photo
     print("\nCapturing photo...")
