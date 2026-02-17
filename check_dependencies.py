@@ -22,10 +22,18 @@ def check_python_packages():
         'yaml'
     ]
     
+    web_packages = [
+        'streamlit',
+        'fastapi',
+        'psycopg2'
+    ]
+    
     missing = []
     installed = []
+    web_missing = []
+    web_installed = []
     
-    print("Checking Python packages...")
+    print("Checking core Python packages...")
     for package in required_packages:
         try:
             __import__(package)
@@ -35,7 +43,17 @@ def check_python_packages():
             missing.append(package)
             print(f"  ✗ {package} - NOT INSTALLED")
     
-    return missing, installed
+    print("\nChecking web interface packages...")
+    for package in web_packages:
+        try:
+            __import__(package)
+            web_installed.append(package)
+            print(f"  ✓ {package}")
+        except ImportError:
+            web_missing.append(package)
+            print(f"  ✗ {package} - NOT INSTALLED")
+    
+    return missing, installed, web_missing, web_installed
 
 
 def check_tesseract():
@@ -65,7 +83,7 @@ def main():
     print("="*60 + "\n")
     
     # Check Python packages
-    missing_packages, installed_packages = check_python_packages()
+    missing_packages, installed_packages, web_missing, web_installed = check_python_packages()
     
     # Check Tesseract
     tesseract_ok = check_tesseract()
@@ -76,13 +94,22 @@ def main():
     print("="*60)
     
     if missing_packages:
-        print("\n❌ Missing Python packages:")
+        print("\n❌ Missing core Python packages:")
         for pkg in missing_packages:
             print(f"   - {pkg}")
         print("\nTo install missing packages, run:")
         print("   pip install -r requirements.txt")
     else:
-        print("\n✓ All Python packages installed!")
+        print("\n✓ All core Python packages installed!")
+    
+    if web_missing:
+        print("\n⚠️  Missing web interface packages:")
+        for pkg in web_missing:
+            print(f"   - {pkg}")
+        print("\nTo install web interface packages, run:")
+        print("   pip install streamlit fastapi psycopg2-binary")
+    else:
+        print("\n✓ All web interface packages installed!")
     
     if not tesseract_ok:
         print("\n❌ Tesseract OCR not found")
@@ -95,8 +122,12 @@ def main():
     
     # Return status
     if missing_packages or not tesseract_ok:
-        print("\n⚠ Some dependencies are missing. Please install them before using nuts_vision.")
+        print("\n⚠ Some core dependencies are missing. Please install them before using nuts_vision.")
         return 1
+    elif web_missing:
+        print("\n⚠ Core dependencies satisfied, but web interface packages are missing.")
+        print("Install them to use the web interface: pip install streamlit fastapi psycopg2-binary")
+        return 0
     else:
         print("\n✓ All dependencies satisfied! You're ready to use nuts_vision.")
         return 0
