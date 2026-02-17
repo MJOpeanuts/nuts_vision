@@ -954,7 +954,107 @@ elif page == "📷 Camera Control":
     # Only show controls if camera is connected
     if st.session_state.camera_connected and st.session_state.camera:
         
-        # Focus Control Section
+        # Preview Section - Moved to top for better ergonomics
+        if st.session_state.camera_mode == 'preview':
+            st.markdown('<div class="sub-header">👁️ Live Preview (Preview Mode)</div>', unsafe_allow_html=True)
+            
+            st.markdown("""
+            **Preview Mode is optimized for smooth, real-time adjustments at 1280x720@60fps.**
+            
+            Use the live preview below to:
+            - Adjust focus and see changes immediately
+            - Fine-tune exposure and brightness
+            - Frame your shot perfectly
+            
+            Once you're satisfied with the settings, switch to **Scan Mode** to capture high-quality images.
+            """)
+        else:
+            st.markdown('<div class="sub-header">👁️ Single Frame Preview (Scan Mode)</div>', unsafe_allow_html=True)
+            
+            st.markdown("""
+            **Scan Mode is optimized for high-quality capture.**
+            
+            - Use single frame capture to verify framing
+            - Your settings from Preview Mode are preserved
+            - Click "Capture Photo" below for high-quality scan
+            """)
+        
+        # Initialize preview state
+        if 'live_preview_active' not in st.session_state:
+            st.session_state.live_preview_active = False
+        
+        col_prev_ctrl, col_prev_status = st.columns([1, 3])
+        
+        with col_prev_ctrl:
+            if st.session_state.camera_mode == 'preview':
+                # Preview mode: smooth continuous preview at 60fps
+                if st.button("▶️ Start Live Preview" if not st.session_state.live_preview_active else "⏸️ Stop Live Preview"):
+                    st.session_state.live_preview_active = not st.session_state.live_preview_active
+                    st.rerun()
+            else:
+                # Scan mode: single frame capture only
+                if st.button("📸 Capture Single Frame", help="Preview one frame before high-quality scan"):
+                    st.session_state.capture_single_frame = True
+        
+        with col_prev_status:
+            if st.session_state.camera_mode == 'preview':
+                if st.session_state.live_preview_active:
+                    st.success("🔴 **Live preview active at 1280x720@60fps** - Adjust all settings and see results in real-time")
+                else:
+                    st.info("⚪ Click 'Start Live Preview' for smooth 60fps real-time preview")
+            else:
+                st.info("📸 **Scan Mode** - Use single frame preview to verify, then capture high-quality image below")
+        
+        # Preview display area
+        preview_placeholder = st.empty()
+        
+        # Fixed refresh rate for optimal 60fps preview performance
+        if 'preview_refresh_rate' not in st.session_state:
+            st.session_state.preview_refresh_rate = 0.016  # ~60 FPS (1/60 second)
+        
+        # Live preview loop
+        if st.session_state.live_preview_active:
+            frame = st.session_state.camera.capture_frame()
+            if frame is not None:
+                # Convert BGR to RGB for display
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                
+                # Calculate sharpness for focus feedback
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                sharpness = cv2.Laplacian(gray, cv2.CV_64F).var()
+                
+                preview_placeholder.image(
+                    frame_rgb, 
+                    caption=f"Live Preview @ 60fps - Sharpness: {sharpness:.2f} (higher is sharper)",
+                    use_container_width=True
+                )
+                
+                # Fixed refresh delay for 60fps performance
+                time.sleep(st.session_state.preview_refresh_rate)
+                st.rerun()
+            else:
+                st.error("Failed to capture frame from camera")
+                st.session_state.live_preview_active = False
+        elif st.session_state.get('capture_single_frame', False):
+            # Capture and display single frame
+            frame = st.session_state.camera.capture_frame()
+            if frame is not None:
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                
+                # Calculate sharpness
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                sharpness = cv2.Laplacian(gray, cv2.CV_64F).var()
+                
+                preview_placeholder.image(
+                    frame_rgb, 
+                    caption=f"Single Frame - Sharpness: {sharpness:.2f}",
+                    use_container_width=True
+                )
+            st.session_state.capture_single_frame = False
+        
+        st.markdown("---")
+        
+        # Focus Control Section - Now below the preview
         st.markdown('<div class="sub-header">🎯 Focus Control</div>', unsafe_allow_html=True)
         
         st.markdown("""
@@ -1113,118 +1213,6 @@ elif page == "📷 Camera Control":
             
             if saturation_value != int(current_saturation):
                 st.session_state.camera.set_saturation(saturation_value)
-        
-        st.markdown("---")
-        
-        # Preview Section
-        if st.session_state.camera_mode == 'preview':
-            st.markdown('<div class="sub-header">👁️ Live Preview (Preview Mode)</div>', unsafe_allow_html=True)
-            
-            st.markdown("""
-            **Preview Mode is optimized for smooth, real-time adjustments.**
-            
-            Use the live preview below to:
-            - Adjust focus and see changes immediately
-            - Fine-tune exposure and brightness
-            - Frame your shot perfectly
-            
-            Once you're satisfied with the settings, switch to **Scan Mode** to capture high-quality images.
-            """)
-        else:
-            st.markdown('<div class="sub-header">👁️ Single Frame Preview (Scan Mode)</div>', unsafe_allow_html=True)
-            
-            st.markdown("""
-            **Scan Mode is optimized for high-quality capture.**
-            
-            - Use single frame capture to verify framing
-            - Your settings from Preview Mode are preserved
-            - Click "Capture Photo" below for high-quality scan
-            """)
-        
-        # Initialize preview state
-        if 'live_preview_active' not in st.session_state:
-            st.session_state.live_preview_active = False
-        
-        col_prev_ctrl, col_prev_status = st.columns([1, 3])
-        
-        with col_prev_ctrl:
-            if st.session_state.camera_mode == 'preview':
-                # Preview mode: smooth continuous preview
-                if st.button("▶️ Start Live Preview" if not st.session_state.live_preview_active else "⏸️ Stop Live Preview"):
-                    st.session_state.live_preview_active = not st.session_state.live_preview_active
-                    st.rerun()
-                
-                # Refresh rate control (only in preview mode with live preview active)
-                if st.session_state.live_preview_active:
-                    refresh_rate = st.select_slider(
-                        "Refresh Rate",
-                        options=[0.1, 0.3, 0.5, 1.0, 2.0],
-                        value=st.session_state.preview_refresh_rate,
-                        format_func=lambda x: f"{x}s ({1/x:.1f} FPS)" if x > 0 else "Max",
-                        help="Control how often the preview updates (0.1s = 10 FPS recommended)"
-                    )
-                    if refresh_rate != st.session_state.preview_refresh_rate:
-                        st.session_state.preview_refresh_rate = refresh_rate
-            else:
-                # Scan mode: single frame capture only
-                if st.button("📸 Capture Single Frame", help="Preview one frame before high-quality scan"):
-                    st.session_state.capture_single_frame = True
-        
-        with col_prev_status:
-            if st.session_state.camera_mode == 'preview':
-                if st.session_state.live_preview_active:
-                    st.success("🔴 **Live preview active** - Adjust all settings and see results in real-time")
-                else:
-                    st.info("⚪ Click 'Start Live Preview' for smooth real-time preview")
-            else:
-                st.info("📸 **Scan Mode** - Use single frame preview to verify, then capture high-quality image below")
-        
-        # Preview display area
-        preview_placeholder = st.empty()
-        
-        # Refresh rate control for live preview
-        if 'preview_refresh_rate' not in st.session_state:
-            st.session_state.preview_refresh_rate = 0.1  # seconds (10 FPS for smoother preview)
-        
-        # Live preview loop
-        if st.session_state.live_preview_active:
-            frame = st.session_state.camera.capture_frame()
-            if frame is not None:
-                # Convert BGR to RGB for display
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                
-                # Calculate sharpness for focus feedback
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                sharpness = cv2.Laplacian(gray, cv2.CV_64F).var()
-                
-                preview_placeholder.image(
-                    frame_rgb, 
-                    caption=f"Live Preview - Sharpness: {sharpness:.2f} (higher is sharper)",
-                    use_container_width=True
-                )
-                
-                # Configurable refresh delay to control CPU/network usage
-                time.sleep(st.session_state.preview_refresh_rate)
-                st.rerun()
-            else:
-                st.error("Failed to capture frame from camera")
-                st.session_state.live_preview_active = False
-        elif st.session_state.get('capture_single_frame', False):
-            # Capture and display single frame
-            frame = st.session_state.camera.capture_frame()
-            if frame is not None:
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                
-                # Calculate sharpness
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                sharpness = cv2.Laplacian(gray, cv2.CV_64F).var()
-                
-                preview_placeholder.image(
-                    frame_rgb, 
-                    caption=f"Single Frame - Sharpness: {sharpness:.2f}",
-                    use_container_width=True
-                )
-            st.session_state.capture_single_frame = False
         
         st.markdown("---")
         
