@@ -1004,6 +1004,18 @@ elif page == "📷 Camera Control":
             # Single frame capture
             if st.button("📸 Capture Single Frame"):
                 st.session_state.capture_single_frame = True
+            
+            # Refresh rate control
+            if st.session_state.live_preview_active:
+                refresh_rate = st.select_slider(
+                    "Refresh Rate",
+                    options=[0.1, 0.3, 0.5, 1.0, 2.0],
+                    value=st.session_state.preview_refresh_rate,
+                    format_func=lambda x: f"{x}s ({1/x:.1f} FPS)" if x > 0 else "Max",
+                    help="Control how often the preview updates (lower = faster but more CPU)"
+                )
+                if refresh_rate != st.session_state.preview_refresh_rate:
+                    st.session_state.preview_refresh_rate = refresh_rate
         
         with col_prev_status:
             if st.session_state.live_preview_active:
@@ -1013,6 +1025,10 @@ elif page == "📷 Camera Control":
         
         # Preview display area
         preview_placeholder = st.empty()
+        
+        # Refresh rate control for live preview
+        if 'preview_refresh_rate' not in st.session_state:
+            st.session_state.preview_refresh_rate = 0.5  # seconds
         
         # Live preview loop
         if st.session_state.live_preview_active:
@@ -1033,8 +1049,8 @@ elif page == "📷 Camera Control":
                     use_container_width=True
                 )
                 
-                # Auto-refresh for live preview
-                time.sleep(0.1)  # Small delay to avoid too frequent updates
+                # Configurable refresh delay to control CPU/network usage
+                time.sleep(st.session_state.preview_refresh_rate)
                 st.rerun()
             else:
                 st.error("Failed to capture frame from camera")
