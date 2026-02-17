@@ -70,3 +70,11 @@ temp/
 # Logs
 *.log
 logs/
+
+# Environment variables
+.env
+.env.local
+
+# Database
+*.sql.backup
+backup.sql

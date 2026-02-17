@@ -65,7 +65,8 @@ class ComponentCropper:
         image_path: str,
         detections: List[Dict],
         output_dir: str = "outputs/cropped_components",
-        save_metadata: bool = True
+        save_metadata: bool = True,
+        component_filter: Optional[List[str]] = None
     ) -> List[str]:
         """
         Crop all detected components from an image.
@@ -75,6 +76,7 @@ class ComponentCropper:
             detections: List of detection dictionaries from detector
             output_dir: Directory to save cropped components
             save_metadata: Whether to save metadata JSON
+            component_filter: List of component types to crop (e.g., ['IC']). If None, crop all.
             
         Returns:
             List of paths to saved component images
@@ -101,6 +103,10 @@ class ComponentCropper:
             bbox = detection['bbox']
             confidence = detection['confidence']
             
+            # Apply filter if specified
+            if component_filter and class_name not in component_filter:
+                continue
+            
             # Crop component
             cropped = self.crop_component(image, bbox)
             
@@ -123,7 +129,7 @@ class ComponentCropper:
             })
         
         # Save metadata if requested
-        if save_metadata:
+        if save_metadata and metadata:
             metadata_path = output_dir / f"{base_name}_metadata.json"
             with open(metadata_path, 'w') as f:
                 json.dump(metadata, f, indent=2)
@@ -133,7 +139,8 @@ class ComponentCropper:
     def crop_from_detection_file(
         self,
         detection_file: str,
-        output_dir: str = "outputs/cropped_components"
+        output_dir: str = "outputs/cropped_components",
+        component_filter: Optional[List[str]] = None
     ) -> Dict[str, List[str]]:
         """
         Crop components from multiple images using a detection results file.
@@ -141,6 +148,7 @@ class ComponentCropper:
         Args:
             detection_file: Path to detections.json file
             output_dir: Directory to save cropped components
+            component_filter: List of component types to crop (e.g., ['IC']). If None, crop all.
             
         Returns:
             Dictionary mapping image paths to lists of cropped component paths
@@ -154,13 +162,16 @@ class ComponentCropper:
         # Process each image
         for image_path, detections in all_detections.items():
             print(f"\nCropping components from: {Path(image_path).name}")
+            if component_filter:
+                print(f"  Filter: {', '.join(component_filter)}")
             print(f"  Found {len(detections)} components")
             
             try:
                 cropped_paths = self.crop_from_detections(
                     image_path,
                     detections,
-                    output_dir
+                    output_dir,
+                    component_filter=component_filter
                 )
                 all_cropped[image_path] = cropped_paths
                 print(f"  Saved {len(cropped_paths)} cropped images")
@@ -199,6 +210,12 @@ def main():
         default=10,
         help="Padding around cropped components (pixels)"
     )
+    parser.add_argument(
+        "--filter",
+        type=str,
+        nargs='+',
+        help="Component types to crop (e.g., IC LED). If not specified, crops all components."
+    )
     
     args = parser.parse_args()
     
@@ -210,7 +227,8 @@ def main():
         # Crop from detection file (multiple images)
         cropper.crop_from_detection_file(
             args.detection_file,
-            args.output_dir
+            args.output_dir,
+            component_filter=args.filter
         )
         print(f"\nCropped components saved to: {args.output_dir}")
         
@@ -222,7 +240,8 @@ def main():
         cropped_paths = cropper.crop_from_detections(
             args.image,
             detections,
-            args.output_dir
+            args.output_dir,
+            component_filter=args.filter
         )
         print(f"\nCropped {len(cropped_paths)} components")
         print(f"Saved to: {args.output_dir}")
