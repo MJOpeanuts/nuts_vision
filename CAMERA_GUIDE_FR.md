@@ -28,18 +28,39 @@ pip install -r requirements.txt
 
 3. **Connecter la caméra:**
    - Index de caméra: 0 (par défaut)
-   - Résolution: 1920x1080 (recommandé)
+   - Choisir une résolution prédéfinie ou personnalisée:
+     - HD (1280x720) - Prévisualisation rapide
+     - Full HD (1920x1080) - **Recommandé**
+     - 2K (2560x1440) - Haute qualité
+     - 4K (3840x2160) - Qualité maximale
+     - Personnalisée - Définir vos propres valeurs
    - Cliquer sur "🔌 Connect"
+   - Les informations de la caméra s'afficheront (résolution, FPS, focus actuel)
 
-4. **Régler le focus:**
-   - **Manuel:** Utiliser le curseur pour ajuster le focus (0-255)
+4. **Activer la prévisualisation en direct:**
+   - Cliquer sur "▶️ Start Live Preview" pour voir le flux vidéo en temps réel
+   - L'image se rafraîchit automatiquement pour faciliter le réglage du focus
+   - Le score de netteté (sharpness) s'affiche pour vous aider à optimiser le focus
+   - Cliquer sur "⏸️ Stop Live Preview" pour arrêter
+
+5. **Régler le focus:**
+   - **Manuel:** 
+     - Activer la prévisualisation en direct (recommandé)
+     - Utiliser le curseur pour ajuster le focus (0-255)
+     - Le changement s'applique instantanément
+     - Observer la netteté dans la prévisualisation
    - **Automatique:** Cliquer sur "🔍 Auto Focus Scan"
+   - **Presets rapides:**
+     - "📍 Near" pour objets proches (~10cm)
+     - "📍 Mid" pour distance moyenne (~20cm)
+     - "📍 Far" pour objets éloignés (~30cm+)
 
-5. **Capturer une photo:**
-   - Ajuster la qualité JPEG (50-100)
+6. **Capturer une photo:**
+   - Ajuster la qualité JPEG (50-100, recommandé: 95)
    - Cliquer sur "📸 Capture Photo"
+   - La photo capturée s'affiche automatiquement
 
-6. **Traiter la photo:**
+7. **Traiter la photo:**
    - Cliquer sur "🔄 Process Image"
    - Les résultats apparaîtront dans le "Job Viewer"
 
@@ -117,10 +138,17 @@ python example_camera_pipeline.py \
 2. **Connexion:**
    ```python
    camera = ArducamCamera(camera_index=0)
-   camera.connect(width=1920, height=1080)
+   # Pour prévisualisation et réglage: résolution plus basse
+   camera.connect(width=1280, height=720, fps=30)
    ```
 
-3. **Mise au point:**
+3. **Mise au point avec prévisualisation en direct (interface web):**
+   - Activer "▶️ Start Live Preview"
+   - Ajuster le curseur de focus tout en observant l'image
+   - Observer le score de netteté (sharpness) - plus élevé = plus net
+   - Ou utiliser "🔍 Auto Focus Scan" pour trouver automatiquement le meilleur focus
+
+4. **Mise au point (script Python):**
    ```python
    # Automatique (recommandé)
    best_focus, sharpness = camera.auto_focus_scan()
@@ -129,18 +157,25 @@ python example_camera_pipeline.py \
    camera.set_focus(150)  # Ajuster selon la distance
    ```
 
-4. **Capture:**
+5. **Reconnexion en haute résolution (optionnel):**
+   ```python
+   camera.disconnect()
+   camera.connect(width=1920, height=1080, fps=30)  # Full HD pour capture
+   camera.set_focus(best_focus)  # Réappliquer le focus optimal
+   ```
+
+6. **Capture:**
    ```python
    photo_path = camera.capture_photo(quality=95)
    ```
 
-5. **Traitement:**
+7. **Traitement:**
    ```python
    pipeline = ComponentAnalysisPipeline(model_path="path/to/model.pt")
    results = pipeline.process_image(photo_path)
    ```
 
-6. **Résultats:**
+8. **Résultats:**
    - Composants détectés: `results['detections']`
    - Numéros de pièce: `results['ocr_results']`
 
@@ -148,23 +183,28 @@ python example_camera_pipeline.py \
 
 ### Résolutions Recommandées:
 
-**Pour la prévisualisation:**
-- 1280x720 @ 30fps - Rapide, bon pour ajuster le focus
+**Pour la prévisualisation en direct:**
+- 1280x720 @ 30fps - **Idéal pour ajuster le focus** (rapide et fluide)
+- 1920x1080 @ 30fps - Bonne qualité avec prévisualisation
 
 **Pour la capture finale:**
-- 1920x1080 @ 15fps - Bon équilibre qualité/vitesse
-- 2560x1440 @ 10fps - Haute qualité pour petits composants
-- 3840x2160 @ 10fps - Très haute qualité (si supporté)
+- 1920x1080 @ 30fps - **Recommandé** - Bon équilibre qualité/vitesse
+- 2560x1440 @ 15fps - Haute qualité pour petits composants
+- 3840x2160 @ 10fps - Très haute qualité (si supporté par la caméra)
+
+💡 **Astuce:** Utilisez une résolution plus basse (HD 720p) pour la prévisualisation en direct et le réglage du focus, puis reconnectez-vous en Full HD ou plus pour la capture finale.
 
 ### Qualité JPEG:
 - **85-90**: Bon équilibre taille/qualité
-- **95**: Haute qualité (recommandé pour OCR)
+- **95**: Haute qualité - **Recommandé pour OCR**
 - **100**: Qualité maximale (fichiers volumineux)
 
 ### Focus:
 - **0-50**: Objets très proches (< 10 cm)
-- **50-150**: Distance normale (10-30 cm) - **Recommandé**
+- **50-150**: Distance normale (10-30 cm) - **Recommandé pour PCB**
 - **150-255**: Objets éloignés (> 30 cm)
+
+💡 **Astuce:** Utilisez la prévisualisation en direct avec le score de netteté (sharpness) pour trouver le focus optimal. Plus le score est élevé, plus l'image est nette!
 
 ## Dépannage
 
@@ -292,9 +332,18 @@ camera2 = ArducamCamera(camera_index=1)
 
 **Q: Comment choisir la meilleure résolution?**
 A: Dépend de votre cas:
-- Prévisualisation: 1280x720
-- Analyse standard: 1920x1080
-- Petits composants: 2560x1440 ou plus
+- Prévisualisation et réglage du focus: 1280x720 (HD) - **Rapide et fluide**
+- Analyse standard: 1920x1080 (Full HD) - **Recommandé**
+- Petits composants: 2560x1440 (2K) ou plus - Haute qualité
+
+**Q: La prévisualisation en direct est-elle nécessaire?**
+A: Non, mais elle est **fortement recommandée** pour le réglage du focus. Elle vous permet de:
+- Voir les changements de focus en temps réel
+- Visualiser le score de netteté (sharpness) pour optimiser le focus
+- Ajuster la position de la caméra et l'éclairage avant la capture
+
+**Q: La prévisualisation ralentit mon ordinateur, que faire?**
+A: Utilisez une résolution plus basse (640x480 ou 1280x720) pour la prévisualisation. Vous pourrez toujours vous reconnecter en haute résolution pour la capture finale.
 
 **Q: L'auto-focus est-il nécessaire?**
 A: Fortement recommandé pour des résultats optimaux. Il trouve automatiquement le meilleur focus.
@@ -304,3 +353,14 @@ A: Environ 15-30 secondes selon les paramètres (start, end, step).
 
 **Q: Puis-je sauvegarder les photos en PNG?**
 A: Actuellement seul JPEG est supporté. Vous pouvez convertir après avec PIL/Pillow si nécessaire.
+
+**Q: Quelle est la différence entre "Capture Single Frame" et "Capture Photo"?**
+A: 
+- **Capture Single Frame**: Affiche une image à l'écran pour vérification, ne sauvegarde pas
+- **Capture Photo**: Sauvegarde l'image sur le disque avec la qualité JPEG spécifiée
+
+**Q: Comment savoir si mon focus est optimal?**
+A: 
+1. Utilisez la prévisualisation en direct
+2. Regardez le score de netteté (sharpness) - plus il est élevé, mieux c'est
+3. Pour les PCB, un score > 100 est généralement bon, > 200 est excellent
