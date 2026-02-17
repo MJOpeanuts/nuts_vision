@@ -363,9 +363,9 @@ elif page == "🔍 Job Viewer":
                 job_options = []
                 job_mapping = {}
                 for job in all_jobs:
-                    job_label = f"Job {job['job_id']} - {job['file_name']} ({job['detection_count']} detections)"
-                    job_options.append(job_label)
-                    job_mapping[job_label] = job
+                    job_display_text = f"Job {job['job_id']} - {job['file_name']} ({job['detection_count']} detections)"
+                    job_options.append(job_display_text)
+                    job_mapping[job_display_text] = job
                 
                 selected_job_label = st.selectbox(
                     "Choose a job to view details",
@@ -435,15 +435,15 @@ elif page == "🔍 Job Viewer":
                                 WHERE ic.job_id = %s
                                 ORDER BY ic.cropped_id
                             """, (job_id,))
-                            cropped_ics = [dict(row) for row in cursor.fetchall()]
+                            ic_components = [dict(row) for row in cursor.fetchall()]
                     
                     # Display cropped ICs and OCR results
-                    if cropped_ics:
+                    if ic_components:
                         st.markdown("---")
-                        st.markdown(f"### ✂️ Cropped IC Components ({len(cropped_ics)} total)")
+                        st.markdown(f"### ✂️ Cropped IC Components ({len(ic_components)} total)")
                         
                         # Display in a grid
-                        for idx, ic in enumerate(cropped_ics, 1):
+                        for idx, ic in enumerate(ic_components, 1):
                             with st.expander(f"🔍 IC #{idx} - {ic['class_name']} (Confidence: {ic['confidence']:.2f})", expanded=(idx == 1)):
                                 col1, col2 = st.columns([1, 2])
                                 
@@ -501,9 +501,9 @@ elif page == "🔍 Job Viewer":
                         st.markdown("---")
                         st.markdown("### 📊 Summary")
                         
-                        total_ics = len(cropped_ics)
-                        with_ocr = sum(1 for ic in cropped_ics if ic['ocr_id'] is not None)
-                        with_mpn = sum(1 for ic in cropped_ics if ic['cleaned_mpn'])
+                        total_ics = len(ic_components)
+                        with_ocr = sum(1 for ic in ic_components if ic['ocr_id'] is not None)
+                        with_mpn = sum(1 for ic in ic_components if ic['cleaned_mpn'])
                         
                         col1, col2, col3 = st.columns(3)
                         with col1:
