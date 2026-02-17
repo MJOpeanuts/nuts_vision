@@ -296,11 +296,19 @@ def custom_focus_scan(camera):
 
 ## Examples
 
-See the [examples](../examples/) directory for:
-- `camera_basic.py`: Basic camera usage
-- `camera_autofocus.py`: Auto-focus examples
-- `camera_batch_capture.py`: Batch photo capture
-- `camera_pipeline_integration.py`: Full pipeline integration
+Example scripts are provided in the root directory:
+- `example_camera.py`: Basic camera usage (connect, focus, capture)
+- `example_camera_pipeline.py`: Complete workflow integrating camera with detection pipeline
+
+**Run the basic example:**
+```bash
+python example_camera.py
+```
+
+**Run the pipeline integration example:**
+```bash
+python example_camera_pipeline.py --model runs/detect/component_detector/weights/best.pt
+```
 
 ## Support
 
