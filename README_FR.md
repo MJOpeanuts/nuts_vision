@@ -133,8 +133,9 @@ if camera.connect(width=1920, height=1080):
 ```
 
 📚 **Guides Supplémentaires:**
+- [WORKFLOW_TWO_MODES.md](WORKFLOW_TWO_MODES.md) - ⭐ **Nouveau: Workflow simplifié à deux modes**
 - [CAMERA.md](CAMERA.md) - Documentation complète de la caméra
-- [ARDUCAM_OPTIMIZATION.md](ARDUCAM_OPTIMIZATION.md) - ⭐ **Optimisations pour images sombres et preview saccadé**
+- [ARDUCAM_OPTIMIZATION.md](ARDUCAM_OPTIMIZATION.md) - Optimisations pour images sombres et preview saccadé
 - [ARDUCAM_108MP_CONFIG.md](ARDUCAM_108MP_CONFIG.md) - Spécifications et configuration
 
 ### Option D: Ligne de Commande
