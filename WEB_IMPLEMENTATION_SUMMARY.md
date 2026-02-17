@@ -153,6 +153,10 @@ http://localhost:8501
 
 ### Test Command:
 ```bash
+# First, install web interface dependencies
+pip install streamlit fastapi psycopg2-binary
+
+# Then run the test
 python test_web_interface.py
 ```
 
