@@ -828,59 +828,93 @@ elif page == "📷 Camera Control":
         st.session_state.camera = None
         st.session_state.camera_connected = False
         st.session_state.preview_running = False
+        st.session_state.camera_mode = 'preview'  # 'preview' or 'scan'
     
-    # Camera Connection Section
-    st.markdown('<div class="sub-header">🔌 Camera Connection</div>', unsafe_allow_html=True)
+    # Camera Mode & Connection Section
+    st.markdown('<div class="sub-header">📷 Camera Mode Selection</div>', unsafe_allow_html=True)
     
+    st.markdown("""
+    **Two simple modes for optimal workflow:**
+    - **🎥 Preview Mode:** Fast & smooth (720p@60fps) - Perfect for adjusting focus, exposure, and all settings
+    - **📸 Scan Mode:** High quality capture - Choose 4K or Ultra High Quality for final images
+    """)
+    
+    # Mode selector
+    col_mode1, col_mode2 = st.columns(2)
+    
+    with col_mode1:
+        camera_mode = st.radio(
+            "Select Camera Mode:",
+            options=['preview', 'scan'],
+            format_func=lambda x: "🎥 Preview Mode (720p@60fps - Fast)" if x == 'preview' else "📸 Scan Mode (4K/Ultra HQ)",
+            index=0 if st.session_state.camera_mode == 'preview' else 1,
+            help="Preview Mode: Fast & smooth for adjustments | Scan Mode: High quality for captures"
+        )
+        
+        # Update mode if changed
+        if camera_mode != st.session_state.camera_mode:
+            # If camera is connected and mode changed, need to reconnect
+            if st.session_state.camera_connected:
+                st.warning("⚠️ Mode changed. Please disconnect and reconnect to apply.")
+            st.session_state.camera_mode = camera_mode
+    
+    with col_mode2:
+        # Show current mode status
+        if camera_mode == 'preview':
+            st.success("🎥 **Preview Mode Active**")
+            st.info("Resolution: 1280x720 @ 60fps\nOptimal for adjustments")
+        else:
+            st.success("📸 **Scan Mode Active**")
+            st.info("High quality capture mode\nChoose resolution below")
+    
+    st.markdown("---")
+    
+    # Configuration based on mode
     col1, col2 = st.columns([2, 1])
     
     with col1:
         camera_index = st.number_input("Camera Index", min_value=0, max_value=10, value=0, 
                                        help="Device index for the camera (usually 0)")
         
-        # Resolution presets for Arducam 108MP USB 3.0 Camera
-        # Based on official specs: 720p@60fps, 4K@10fps, 4000x3000@7fps, 12MP@1fps
-        resolution_presets = {
-            "HD 720p@60fps - Fast & Smooth": (1280, 720, 60),
-            "4K UHD@10fps - High Quality": (3840, 2160, 10),
-            "4000x3000@7fps - Ultra High Quality": (4000, 3000, 7),
-            "HD 720p@30fps - Preview": (1280, 720, 30),
-            "VGA@30fps - Low Quality": (640, 480, 30),
-            "Custom": None
-        }
-        
-        selected_preset = st.selectbox(
-            "Resolution Preset",
-            list(resolution_presets.keys()),
-            index=0,  # Default to HD 720p@60fps
-            help="Choose a preset based on Arducam 108MP specs or select Custom"
-        )
-        
-        if resolution_presets[selected_preset] is None:  # Custom
-            col_w, col_h, col_f = st.columns(3)
-            with col_w:
-                width = st.number_input("Width", min_value=640, max_value=12000, value=1280, step=64)
-            with col_h:
-                height = st.number_input("Height", min_value=480, max_value=9000, value=720, step=64)
-            with col_f:
-                fps = st.selectbox("FPS", [1, 7, 10, 15, 30, 60], index=4)
+        # Resolution selection based on mode
+        if camera_mode == 'preview':
+            # Preview mode: fixed at 720p@60fps
+            width, height, fps = 1280, 720, 60
+            st.success("📐 **Fixed Resolution:** 1280x720 @ 60fps (optimized for smooth preview)")
         else:
-            width, height, fps = resolution_presets[selected_preset]
-            st.info(f"📐 Resolution: {width}x{height} @ {fps}fps")
+            # Scan mode: choose between 4K and Ultra HQ
+            scan_quality = st.radio(
+                "Scan Quality:",
+                options=['4k', 'ultra_hq'],
+                format_func=lambda x: "4K UHD (3840x2160 @ 10fps)" if x == '4k' else "Ultra High Quality (4000x3000 @ 7fps)",
+                index=0,
+                help="4K: Good quality, faster | Ultra HQ: Best quality, slower"
+            )
+            
+            if scan_quality == '4k':
+                width, height, fps = 3840, 2160, 10
+                st.info("📐 Resolution: 3840x2160 @ 10fps (4K UHD)")
+            else:
+                width, height, fps = 4000, 3000, 7
+                st.info("📐 Resolution: 4000x3000 @ 7fps (Ultra High Quality)")
     
     with col2:
-        st.markdown("**Status:**")
+        st.markdown("**Connection Status:**")
         if st.session_state.camera_connected:
             st.success("✅ Connected")
             # Display current camera info
             if st.session_state.camera:
                 info = st.session_state.camera.get_camera_info()
                 if info.get('connected'):
+                    st.markdown(f"**Mode:** {'🎥 Preview' if camera_mode == 'preview' else '📸 Scan'}")
                     st.markdown(f"**Resolution:** {info['width']}x{info['height']}")
                     st.markdown(f"**FPS:** {info['fps']}")
                     st.markdown(f"**Focus:** {info['focus']}")
         else:
             st.warning("⚠️ Not Connected")
+    
+    st.markdown("---")
+    st.markdown('<div class="sub-header">🔌 Connection Controls</div>', unsafe_allow_html=True)
     
     # Connection buttons
     col_btn1, col_btn2, col_btn3 = st.columns(3)
@@ -1083,12 +1117,29 @@ elif page == "📷 Camera Control":
         st.markdown("---")
         
         # Preview Section
-        st.markdown('<div class="sub-header">👁️ Live Preview</div>', unsafe_allow_html=True)
-        
-        st.markdown("""
-        Use live preview to adjust focus in real-time. The preview will continuously update 
-        to show the current camera view, making it easier to find the optimal focus setting.
-        """)
+        if st.session_state.camera_mode == 'preview':
+            st.markdown('<div class="sub-header">👁️ Live Preview (Preview Mode)</div>', unsafe_allow_html=True)
+            
+            st.markdown("""
+            **Preview Mode is optimized for smooth, real-time adjustments.**
+            
+            Use the live preview below to:
+            - Adjust focus and see changes immediately
+            - Fine-tune exposure and brightness
+            - Frame your shot perfectly
+            
+            Once you're satisfied with the settings, switch to **Scan Mode** to capture high-quality images.
+            """)
+        else:
+            st.markdown('<div class="sub-header">👁️ Single Frame Preview (Scan Mode)</div>', unsafe_allow_html=True)
+            
+            st.markdown("""
+            **Scan Mode is optimized for high-quality capture.**
+            
+            - Use single frame capture to verify framing
+            - Your settings from Preview Mode are preserved
+            - Click "Capture Photo" below for high-quality scan
+            """)
         
         # Initialize preview state
         if 'live_preview_active' not in st.session_state:
@@ -1097,32 +1148,36 @@ elif page == "📷 Camera Control":
         col_prev_ctrl, col_prev_status = st.columns([1, 3])
         
         with col_prev_ctrl:
-            # Toggle live preview
-            if st.button("▶️ Start Live Preview" if not st.session_state.live_preview_active else "⏸️ Stop Live Preview"):
-                st.session_state.live_preview_active = not st.session_state.live_preview_active
-                st.rerun()
-            
-            # Single frame capture
-            if st.button("📸 Capture Single Frame"):
-                st.session_state.capture_single_frame = True
-            
-            # Refresh rate control
-            if st.session_state.live_preview_active:
-                refresh_rate = st.select_slider(
-                    "Refresh Rate",
-                    options=[0.1, 0.3, 0.5, 1.0, 2.0],
-                    value=st.session_state.preview_refresh_rate,
-                    format_func=lambda x: f"{x}s ({1/x:.1f} FPS)" if x > 0 else "Max",
-                    help="Control how often the preview updates (lower = faster but more CPU)"
-                )
-                if refresh_rate != st.session_state.preview_refresh_rate:
-                    st.session_state.preview_refresh_rate = refresh_rate
+            if st.session_state.camera_mode == 'preview':
+                # Preview mode: smooth continuous preview
+                if st.button("▶️ Start Live Preview" if not st.session_state.live_preview_active else "⏸️ Stop Live Preview"):
+                    st.session_state.live_preview_active = not st.session_state.live_preview_active
+                    st.rerun()
+                
+                # Refresh rate control (only in preview mode with live preview active)
+                if st.session_state.live_preview_active:
+                    refresh_rate = st.select_slider(
+                        "Refresh Rate",
+                        options=[0.1, 0.3, 0.5, 1.0, 2.0],
+                        value=st.session_state.preview_refresh_rate,
+                        format_func=lambda x: f"{x}s ({1/x:.1f} FPS)" if x > 0 else "Max",
+                        help="Control how often the preview updates (0.1s = 10 FPS recommended)"
+                    )
+                    if refresh_rate != st.session_state.preview_refresh_rate:
+                        st.session_state.preview_refresh_rate = refresh_rate
+            else:
+                # Scan mode: single frame capture only
+                if st.button("📸 Capture Single Frame", help="Preview one frame before high-quality scan"):
+                    st.session_state.capture_single_frame = True
         
         with col_prev_status:
-            if st.session_state.live_preview_active:
-                st.info("🔴 Live preview is running. Adjust focus slider below to see changes in real-time.")
+            if st.session_state.camera_mode == 'preview':
+                if st.session_state.live_preview_active:
+                    st.success("🔴 **Live preview active** - Adjust all settings and see results in real-time")
+                else:
+                    st.info("⚪ Click 'Start Live Preview' for smooth real-time preview")
             else:
-                st.info("⚪ Live preview is stopped. Click 'Start Live Preview' to begin.")
+                st.info("📸 **Scan Mode** - Use single frame preview to verify, then capture high-quality image below")
         
         # Preview display area
         preview_placeholder = st.empty()
@@ -1174,7 +1229,12 @@ elif page == "📷 Camera Control":
         st.markdown("---")
         
         # Photo Capture Section
-        st.markdown('<div class="sub-header">📸 Capture Photo</div>', unsafe_allow_html=True)
+        if st.session_state.camera_mode == 'preview':
+            st.markdown('<div class="sub-header">📸 Quick Capture (Preview Quality)</div>', unsafe_allow_html=True)
+            st.info("💡 **Tip:** For high-quality scans, switch to **Scan Mode** above after adjusting all settings.")
+        else:
+            st.markdown('<div class="sub-header">📸 High-Quality Scan Capture</div>', unsafe_allow_html=True)
+            st.success("✅ **Scan Mode Active** - Capturing at high quality!")
         
         col_cap1, col_cap2 = st.columns([2, 1])
         
@@ -1188,8 +1248,9 @@ elif page == "📷 Camera Control":
         with col_cap2:
             st.markdown("**Actions**")
             
-            if st.button("📸 Capture Photo", type="primary"):
-                with st.spinner("Capturing photo..."):
+            button_label = "📸 Capture Photo" if st.session_state.camera_mode == 'preview' else "📸 Capture High-Quality Scan"
+            if st.button(button_label, type="primary"):
+                with st.spinner(f"Capturing {'photo' if st.session_state.camera_mode == 'preview' else 'high-quality scan'}..."):
                     output_path = custom_path if custom_path else None
                     saved_path = st.session_state.camera.capture_photo(
                         output_path=output_path,
@@ -1197,7 +1258,8 @@ elif page == "📷 Camera Control":
                     )
                     
                     if saved_path:
-                        st.success(f"Photo saved to: {saved_path}")
+                        resolution_info = f"{st.session_state.camera.get_camera_info()['width']}x{st.session_state.camera.get_camera_info()['height']}"
+                        st.success(f"{'Photo' if st.session_state.camera_mode == 'preview' else 'High-quality scan'} saved ({resolution_info}): {saved_path}")
                         
                         # Store in session state for processing
                         st.session_state.last_captured_photo = saved_path
