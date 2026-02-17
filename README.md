@@ -160,7 +160,10 @@ if camera.connect(width=1920, height=1080):
     camera.disconnect()
 ```
 
-For more details, see [CAMERA.md](CAMERA.md)
+📚 **Additional Guides:**
+- [CAMERA.md](CAMERA.md) - Complete camera documentation
+- [ARDUCAM_OPTIMIZATION.md](ARDUCAM_OPTIMIZATION.md) - ⭐ **Optimizations for dark images and jerky preview**
+- [ARDUCAM_108MP_CONFIG.md](ARDUCAM_108MP_CONFIG.md) - Camera specifications and configuration
 
 ## Detailed Usage
 
