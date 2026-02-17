@@ -14,6 +14,9 @@ pytesseract>=0.3.10
 # Data Management
 pandas>=2.0.0
 
+# Database (optional)
+psycopg2-binary>=2.9.0
+
 # Visualization
 matplotlib>=3.7.0
 seaborn>=0.12.0
