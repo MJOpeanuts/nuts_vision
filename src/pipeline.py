@@ -118,7 +118,9 @@ class ComponentAnalysisPipeline:
                 try:
                     file_name = Path(img_path_str).name
                     format = Path(img_path_str).suffix[1:]  # Remove the dot
-                    image_id = self.db.log_image_upload(file_name, img_path_str, format)
+                    # Store absolute path to ensure images can be found later
+                    absolute_path = str(Path(img_path_str).resolve())
+                    image_id = self.db.log_image_upload(file_name, absolute_path, format)
                     job_id = self.db.start_job(image_id, self.model_path)
                 except Exception as e:
                     print(f"Warning: Database logging failed for image upload: {e}")
@@ -171,10 +173,12 @@ class ComponentAnalysisPipeline:
                         for i, detection in enumerate(detections):
                             if detection['class_name'] == 'IC':
                                 if i in detection_ids and ic_index < len(cropped_paths):
+                                    # Store absolute path to ensure images can be found later
+                                    absolute_cropped_path = str(Path(cropped_paths[ic_index]).resolve())
                                     cropped_id = self.db.log_cropped_ic(
                                         job_id,
                                         detection_ids[i],
-                                        cropped_paths[ic_index]
+                                        absolute_cropped_path
                                     )
                                     cropped_ids[cropped_paths[ic_index]] = cropped_id
                                     ic_index += 1
