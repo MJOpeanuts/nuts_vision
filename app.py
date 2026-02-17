@@ -15,6 +15,8 @@ from datetime import datetime
 import os
 from PIL import Image
 import json
+import time
+import cv2
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -1032,11 +1034,9 @@ elif page == "📷 Camera Control":
         
         # Live preview loop
         if st.session_state.live_preview_active:
-            import time
             frame = st.session_state.camera.capture_frame()
             if frame is not None:
                 # Convert BGR to RGB for display
-                import cv2
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 
                 # Calculate sharpness for focus feedback
@@ -1059,7 +1059,6 @@ elif page == "📷 Camera Control":
             # Capture and display single frame
             frame = st.session_state.camera.capture_frame()
             if frame is not None:
-                import cv2
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 
                 # Calculate sharpness
