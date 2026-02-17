@@ -97,7 +97,7 @@ st.sidebar.markdown("---")
 
 page = st.sidebar.radio(
     "Navigation",
-    ["🏠 Home", "📤 Upload & Process", "🔍 Job Viewer", "🗄️ Database Viewer", "📊 Statistics", "ℹ️ About"]
+    ["🏠 Home", "📤 Upload & Process", "📷 Camera Control", "🔍 Job Viewer", "🗄️ Database Viewer", "📊 Statistics", "ℹ️ About"]
 )
 
 st.sidebar.markdown("---")
@@ -788,6 +788,258 @@ elif page == "📊 Statistics":
             
         except Exception as e:
             st.error(f"Error loading statistics: {str(e)}")
+
+
+# ========== ABOUT PAGE ==========
+
+
+# ========== CAMERA CONTROL PAGE ==========
+elif page == "📷 Camera Control":
+    st.markdown('<div class="main-header">📷 Arducam 108MP Camera Control</div>', unsafe_allow_html=True)
+    
+    st.markdown("""
+    Control your Arducam 108MP Motorized Focus USB 3.0 Camera to capture high-quality images
+    for component analysis.
+    
+    **Features:**
+    - Connect to Arducam 108MP camera
+    - Adjust motorized focus (manual or auto)
+    - Capture high-resolution photos
+    - Process captured photos with existing pipeline
+    """)
+    
+    st.markdown("---")
+    
+    # Import camera control
+    try:
+        from camera_control import ArducamCamera
+        camera_available = True
+    except ImportError as e:
+        st.error(f"Camera control module not available: {e}")
+        camera_available = False
+    
+    if not camera_available:
+        st.stop()
+    
+    # Initialize session state for camera
+    if 'camera' not in st.session_state:
+        st.session_state.camera = None
+        st.session_state.camera_connected = False
+        st.session_state.preview_running = False
+    
+    # Camera Connection Section
+    st.markdown('<div class="sub-header">🔌 Camera Connection</div>', unsafe_allow_html=True)
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        camera_index = st.number_input("Camera Index", min_value=0, max_value=10, value=0, 
+                                       help="Device index for the camera (usually 0)")
+        
+        col_w, col_h, col_f = st.columns(3)
+        with col_w:
+            width = st.selectbox("Width", [640, 1280, 1920, 2560, 3840], index=2)
+        with col_h:
+            height = st.selectbox("Height", [480, 720, 1080, 1440, 2160], index=2)
+        with col_f:
+            fps = st.selectbox("FPS", [10, 15, 20, 30], index=3)
+    
+    with col2:
+        st.markdown("**Status:**")
+        if st.session_state.camera_connected:
+            st.success("✅ Connected")
+        else:
+            st.warning("⚠️ Not Connected")
+    
+    # Connection buttons
+    col_btn1, col_btn2, col_btn3 = st.columns(3)
+    
+    with col_btn1:
+        if st.button("🔌 Connect", disabled=st.session_state.camera_connected):
+            with st.spinner("Connecting to camera..."):
+                st.session_state.camera = ArducamCamera(camera_index=camera_index)
+                success = st.session_state.camera.connect(width=width, height=height, fps=fps)
+                
+                if success:
+                    st.session_state.camera_connected = True
+                    st.success("Camera connected successfully!")
+                    st.rerun()
+                else:
+                    st.error("Failed to connect to camera. Please check the camera is plugged in and the index is correct.")
+                    st.session_state.camera = None
+    
+    with col_btn2:
+        if st.button("🔄 Disconnect", disabled=not st.session_state.camera_connected):
+            if st.session_state.camera:
+                st.session_state.camera.disconnect()
+                st.session_state.camera = None
+                st.session_state.camera_connected = False
+                st.session_state.preview_running = False
+                st.success("Camera disconnected")
+                st.rerun()
+    
+    with col_btn3:
+        if st.button("ℹ️ Camera Info", disabled=not st.session_state.camera_connected):
+            if st.session_state.camera:
+                info = st.session_state.camera.get_camera_info()
+                st.json(info)
+    
+    st.markdown("---")
+    
+    # Only show controls if camera is connected
+    if st.session_state.camera_connected and st.session_state.camera:
+        
+        # Focus Control Section
+        st.markdown('<div class="sub-header">🎯 Focus Control</div>', unsafe_allow_html=True)
+        
+        col_focus1, col_focus2 = st.columns([3, 1])
+        
+        with col_focus1:
+            # Focus slider
+            current_focus = st.session_state.camera.get_focus()
+            if current_focus is None:
+                current_focus = 0
+            
+            focus_value = st.slider("Focus Value", min_value=0, max_value=255, 
+                                    value=int(current_focus), step=1,
+                                    help="Adjust the motorized focus (0 = near, 255 = far)")
+            
+            if st.button("Apply Focus"):
+                st.session_state.camera.set_focus(focus_value)
+                st.success(f"Focus set to {focus_value}")
+        
+        with col_focus2:
+            st.markdown("**Auto Focus**")
+            if st.button("🔍 Auto Focus Scan"):
+                with st.spinner("Scanning for optimal focus..."):
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+                    
+                    # Perform auto-focus
+                    best_focus, sharpness = st.session_state.camera.auto_focus_scan(
+                        start=0, end=255, step=20
+                    )
+                    
+                    progress_bar.progress(100)
+                    status_text.success(f"✅ Optimal focus found: {best_focus} (sharpness: {sharpness:.2f})")
+        
+        st.markdown("---")
+        
+        # Preview Section
+        st.markdown('<div class="sub-header">👁️ Live Preview</div>', unsafe_allow_html=True)
+        
+        col_prev1, col_prev2 = st.columns([3, 1])
+        
+        with col_prev1:
+            preview_placeholder = st.empty()
+        
+        with col_prev2:
+            if st.button("📸 Capture Frame"):
+                frame = st.session_state.camera.capture_frame()
+                if frame is not None:
+                    # Convert BGR to RGB for display
+                    import cv2
+                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    preview_placeholder.image(frame_rgb, caption="Captured Frame", use_container_width=True)
+                else:
+                    st.error("Failed to capture frame")
+        
+        st.markdown("---")
+        
+        # Photo Capture Section
+        st.markdown('<div class="sub-header">📸 Capture Photo</div>', unsafe_allow_html=True)
+        
+        col_cap1, col_cap2 = st.columns([2, 1])
+        
+        with col_cap1:
+            quality = st.slider("JPEG Quality", min_value=50, max_value=100, value=95, step=5,
+                               help="JPEG compression quality (higher = better quality, larger file)")
+            
+            custom_path = st.text_input("Custom Save Path (optional)", 
+                                       placeholder="Leave empty for auto-generated path")
+        
+        with col_cap2:
+            st.markdown("**Actions**")
+            
+            if st.button("📸 Capture Photo", type="primary"):
+                with st.spinner("Capturing photo..."):
+                    output_path = custom_path if custom_path else None
+                    saved_path = st.session_state.camera.capture_photo(
+                        output_path=output_path,
+                        quality=quality
+                    )
+                    
+                    if saved_path:
+                        st.success(f"Photo saved to: {saved_path}")
+                        
+                        # Store in session state for processing
+                        st.session_state.last_captured_photo = saved_path
+                        
+                        # Display the captured photo
+                        try:
+                            img = Image.open(saved_path)
+                            st.image(img, caption=f"Captured: {Path(saved_path).name}", 
+                                   use_container_width=True)
+                        except Exception as e:
+                            st.warning(f"Could not display image: {e}")
+                    else:
+                        st.error("Failed to capture photo")
+        
+        # Process Captured Photo Section
+        if 'last_captured_photo' in st.session_state:
+            st.markdown("---")
+            st.markdown('<div class="sub-header">🔄 Process Captured Photo</div>', unsafe_allow_html=True)
+            
+            st.info(f"**Last captured photo:** {st.session_state.last_captured_photo}")
+            
+            col_proc1, col_proc2 = st.columns([2, 1])
+            
+            with col_proc1:
+                st.markdown("""
+                Process the captured photo through the nuts_vision pipeline to detect components
+                and extract manufacturer part numbers.
+                """)
+            
+            with col_proc2:
+                if st.button("🔄 Process Image", type="primary"):
+                    # Check if model exists
+                    default_model_path = "runs/detect/component_detector/weights/best.pt"
+                    
+                    if not Path(default_model_path).exists():
+                        st.error("Model not found. Please train a model first.")
+                    else:
+                        with st.spinner("Processing image through pipeline..."):
+                            try:
+                                # Import pipeline
+                                from pipeline import ComponentAnalysisPipeline
+                                
+                                # Initialize pipeline
+                                use_db = st.session_state.get('db_connected', False)
+                                pipeline = ComponentAnalysisPipeline(
+                                    model_path=default_model_path,
+                                    use_database=use_db
+                                )
+                                
+                                # Process the image
+                                results = pipeline.process_image(st.session_state.last_captured_photo)
+                                
+                                st.success("✅ Image processed successfully!")
+                                
+                                # Display results
+                                if results:
+                                    st.markdown("**Results:**")
+                                    st.json(results)
+                                    
+                                    # Link to Job Viewer
+                                    st.info("📊 View detailed results in the **Job Viewer** page")
+                                
+                            except Exception as e:
+                                st.error(f"Error processing image: {e}")
+                                import traceback
+                                st.code(traceback.format_exc())
+    
+    else:
+        st.info("👆 Please connect to the camera first to access controls and capture photos.")
 
 
 # ========== ABOUT PAGE ==========

@@ -1,20 +1,23 @@
 # nuts_vision - Electronic Component Detection & OCR
 
-A computer vision system for automated electronic circuit board analysis using YOLOv8 and Tesseract OCR.
+A computer vision system for automated electronic circuit board analysis using YOLOv8 and Tesseract OCR. Now with integrated Arducam 108MP motorized focus camera support for high-quality image capture.
 
 > 🚀 **[START HERE / COMMENCER ICI](COMMENCER_ICI.md)** - Get started in 5 minutes!
 > 
 > 🇫🇷 [Version française / French version](README_FR.md) | [Démarrage rapide](DEMARRAGE_RAPIDE.md)
 > 
-> 🇬🇧 [Quick Start Guide](QUICKSTART.md)
+> 🇬🇧 [Quick Start Guide](QUICKSTART.md) | 📷 [Camera Guide](CAMERA.md)
 
 ## Overview
 
 This project uses computer vision to analyze images of electronic circuit boards, detect and automatically crop individual components (ICs, resistors, capacitors, etc.), and extract Manufacturer Part Numbers (MPNs) via OCR. The system is built on a YOLO model trained on the CompDetect dataset (583 images, 16 component classes).
 
+**New:** Full integration with Arducam 108MP camera (ref: B0494C) for capturing high-resolution photos with automatic focus control.
+
 ### Key Features
 
 - **🌐 Web Interface**: Modern Streamlit-based GUI with Supabase-like database viewer
+- **📷 Arducam Camera Support**: Integrated support for Arducam 108MP motorized focus camera
 - **Component Detection**: YOLOv8-based detection of 16 component types
 - **Image Preprocessing**: Gaussian blur and edge detection for improved accuracy
 - **Smart IC Cropping**: Automatically crops only IC components for OCR processing
@@ -121,6 +124,43 @@ python src/pipeline.py \
 ```
 
 See [DATABASE.md](DATABASE.md) for database setup and [USAGE_EXAMPLES.md](USAGE_EXAMPLES.md) for more examples.
+
+### 4. (Optional) Capture Images with Arducam Camera
+
+nuts_vision now supports the Arducam 108MP Motorized Focus USB 3.0 Camera (ref: B0494C).
+
+**Using the Web Interface:**
+
+1. Start the web interface: `streamlit run app.py`
+2. Navigate to the **📷 Camera Control** page
+3. Connect to your camera
+4. Adjust focus (manual or automatic)
+5. Capture high-resolution photos
+6. Process photos through the detection pipeline
+
+**Using Python:**
+
+```python
+from src.camera_control import ArducamCamera
+from src.pipeline import ComponentAnalysisPipeline
+
+# Connect to camera
+camera = ArducamCamera(camera_index=0)
+if camera.connect(width=1920, height=1080):
+    # Auto-focus
+    camera.auto_focus_scan()
+    
+    # Capture photo
+    photo_path = camera.capture_photo()
+    
+    # Process with pipeline
+    pipeline = ComponentAnalysisPipeline(model_path="runs/detect/component_detector/weights/best.pt")
+    results = pipeline.process_image(photo_path)
+    
+    camera.disconnect()
+```
+
+For more details, see [CAMERA.md](CAMERA.md)
 
 ## Detailed Usage
 
