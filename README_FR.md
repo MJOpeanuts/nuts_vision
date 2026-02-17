@@ -10,10 +10,13 @@ Ce projet utilise la vision par ordinateur pour analyser des images de cartes é
 
 ### Fonctionnalités Principales
 
+- **🌐 Interface Web**: Interface Streamlit moderne avec visualiseur de base de données type Supabase
+- **📷 Contrôle Caméra Arducam**: Support intégré pour la caméra Arducam 108MP avec focus motorisé
 - **Détection de Composants**: Détection YOLOv8 de 16 types de composants
 - **Prétraitement d'Image**: Flou gaussien et détection de contours pour améliorer la précision
 - **Découpage Automatique**: Extraction des composants individuels depuis les images de cartes
 - **Extraction de MPN**: Extraction OCR des numéros de pièce fabricant des circuits intégrés
+- **Suivi en Base de Données**: Base de données PostgreSQL avec interface type Supabase
 - **Export CSV**: Sauvegarde des MPNs extraits pour la gestion d'inventaire
 - **Visualisation**: Génération de statistiques et visualisations des résultats
 
@@ -92,7 +95,44 @@ L'application s'ouvrira à `http://localhost:8501`
 
 Pour plus de détails, consultez [INTERFACE_WEB.md](INTERFACE_WEB.md)
 
-### Option B: Ligne de Commande
+### Option C: Capture d'Images avec Caméra Arducam
+
+nuts_vision supporte maintenant la caméra Arducam 108MP avec focus motorisé (référence B0494C).
+
+**Via l'interface web:**
+
+1. Lancez l'interface web : `streamlit run app.py`
+2. Naviguez vers la page **📷 Contrôle Caméra**
+3. Connectez-vous à la caméra
+4. Réglez le focus (manuel ou automatique)
+5. Capturez des photos haute résolution
+6. Traitez les photos avec le pipeline de détection
+
+**Via Python:**
+
+```python
+from src.camera_control import ArducamCamera
+from src.pipeline import ComponentAnalysisPipeline
+
+# Connexion à la caméra
+camera = ArducamCamera(camera_index=0)
+if camera.connect(width=1920, height=1080):
+    # Réglage automatique du focus
+    camera.auto_focus_scan()
+    
+    # Capture d'une photo
+    photo_path = camera.capture_photo()
+    
+    # Traitement de la photo
+    pipeline = ComponentAnalysisPipeline(model_path="runs/detect/component_detector/weights/best.pt")
+    results = pipeline.process_image(photo_path)
+    
+    camera.disconnect()
+```
+
+Pour plus de détails, consultez [CAMERA.md](CAMERA.md)
+
+### Option D: Ligne de Commande
 
 #### 1. Entraîner le Modèle
 
