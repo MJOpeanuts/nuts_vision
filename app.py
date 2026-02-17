@@ -838,31 +838,32 @@ elif page == "📷 Camera Control":
         camera_index = st.number_input("Camera Index", min_value=0, max_value=10, value=0, 
                                        help="Device index for the camera (usually 0)")
         
-        # Resolution presets
+        # Resolution presets for Arducam 108MP USB 3.0 Camera
+        # Based on official specs: 720p@60fps, 4K@10fps, 4000x3000@7fps, 12MP@1fps
         resolution_presets = {
-            "HD (1280x720) - Fast Preview": (1280, 720, 30),
-            "Full HD (1920x1080) - Recommended": (1920, 1080, 30),
-            "2K (2560x1440) - High Quality": (2560, 1440, 15),
-            "4K (3840x2160) - Max Quality": (3840, 2160, 10),
-            "VGA (640x480) - Low Quality": (640, 480, 30),
+            "HD 720p@60fps - Fast & Smooth": (1280, 720, 60),
+            "4K UHD@10fps - High Quality": (3840, 2160, 10),
+            "4000x3000@7fps - Ultra High Quality": (4000, 3000, 7),
+            "HD 720p@30fps - Preview": (1280, 720, 30),
+            "VGA@30fps - Low Quality": (640, 480, 30),
             "Custom": None
         }
         
         selected_preset = st.selectbox(
             "Resolution Preset",
             list(resolution_presets.keys()),
-            index=1,  # Default to Full HD
-            help="Choose a preset or select Custom to specify your own resolution"
+            index=0,  # Default to HD 720p@60fps
+            help="Choose a preset based on Arducam 108MP specs or select Custom"
         )
         
         if resolution_presets[selected_preset] is None:  # Custom
             col_w, col_h, col_f = st.columns(3)
             with col_w:
-                width = st.number_input("Width", min_value=640, max_value=7680, value=1920, step=64)
+                width = st.number_input("Width", min_value=640, max_value=12000, value=1280, step=64)
             with col_h:
-                height = st.number_input("Height", min_value=480, max_value=4320, value=1080, step=64)
+                height = st.number_input("Height", min_value=480, max_value=9000, value=720, step=64)
             with col_f:
-                fps = st.selectbox("FPS", [10, 15, 20, 30, 60], index=3)
+                fps = st.selectbox("FPS", [1, 7, 10, 15, 30, 60], index=4)
         else:
             width, height, fps = resolution_presets[selected_preset]
             st.info(f"📐 Resolution: {width}x{height} @ {fps}fps")
@@ -935,9 +936,9 @@ elif page == "📷 Camera Control":
             if current_focus is None:
                 current_focus = 0
             
-            focus_value = st.slider("Focus Value", min_value=0, max_value=255, 
+            focus_value = st.slider("Focus Value", min_value=0, max_value=1023, 
                                     value=int(current_focus), step=1,
-                                    help="Adjust the motorized focus (0 = near, 255 = far)")
+                                    help="Adjust the motorized focus (0 = near, 1023 = far) - Arducam 108MP range")
             
             # Auto-apply focus when slider changes
             if focus_value != int(current_focus):
@@ -955,7 +956,7 @@ elif page == "📷 Camera Control":
                     
                     # Perform auto-focus
                     best_focus, sharpness = st.session_state.camera.auto_focus_scan(
-                        start=0, end=255, step=20
+                        start=0, end=1023, step=50
                     )
                     
                     st.success(f"✅ Optimal focus: {best_focus} (sharpness: {sharpness:.2f})")
@@ -970,15 +971,15 @@ elif page == "📷 Camera Control":
             col_near, col_mid, col_far = st.columns(3)
             with col_near:
                 if st.button("📍 Near", help="Focus for close objects (~10cm)"):
-                    st.session_state.camera.set_focus(50)
+                    st.session_state.camera.set_focus(200)
                     st.rerun()
             with col_mid:
                 if st.button("📍 Mid", help="Focus for medium distance (~20cm)"):
-                    st.session_state.camera.set_focus(125)
+                    st.session_state.camera.set_focus(500)
                     st.rerun()
             with col_far:
                 if st.button("📍 Far", help="Focus for distant objects (~30cm+)"):
-                    st.session_state.camera.set_focus(200)
+                    st.session_state.camera.set_focus(800)
                     st.rerun()
         
         st.markdown("---")
