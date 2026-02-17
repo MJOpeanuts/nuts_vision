@@ -16,8 +16,10 @@ This project uses computer vision to analyze images of electronic circuit boards
 
 - **Component Detection**: YOLOv8-based detection of 16 component types
 - **Image Preprocessing**: Gaussian blur and edge detection for improved accuracy
-- **Automated Cropping**: Extract individual components from board images
-- **MPN Extraction**: OCR-based extraction of manufacturer part numbers from ICs
+- **Smart IC Cropping**: Automatically crops only IC components for OCR processing
+- **Advanced OCR**: Multi-angle OCR (0°, 90°, 180°, 270°) with image optimization for better text extraction
+- **MPN Extraction**: Manufacturer part number extraction from ICs with confidence scoring
+- **Database Tracking**: Optional PostgreSQL database for tracking all extractions and processing jobs
 - **CSV Export**: Save extracted MPNs for inventory management
 - **Visualization**: Generate statistics and visualizations of detection results
 
@@ -47,6 +49,7 @@ The model can detect the following 16 component types:
 
 - Python 3.8 or higher
 - Tesseract OCR (for MPN extraction)
+- Docker (optional, for database tracking)
 
 ### Install Tesseract OCR
 
@@ -96,10 +99,27 @@ python src/pipeline.py --model runs/detect/component_detector/weights/best.pt --
 
 This will:
 1. Detect all components in the image(s)
-2. Crop each component to individual files
-3. Extract MPNs from IC components using OCR
+2. Crop only IC components for OCR processing
+3. Extract MPNs from ICs using multi-angle OCR (0°, 90°, 180°, 270°)
 4. Generate visualizations and statistics
 5. Save results to CSV and JSON files
+
+### 3. (Optional) Enable Database Tracking
+
+Start the PostgreSQL database and run the pipeline with database logging:
+
+```bash
+# Start database
+docker-compose up -d
+
+# Run pipeline with database tracking
+python src/pipeline.py \
+  --model runs/detect/component_detector/weights/best.pt \
+  --image path/to/board.jpg \
+  --use-database
+```
+
+See [DATABASE.md](DATABASE.md) for database setup and [USAGE_EXAMPLES.md](USAGE_EXAMPLES.md) for more examples.
 
 ## Detailed Usage
 
@@ -266,9 +286,18 @@ python src/train.py --model-size n --batch 8
 ```
 
 ### Poor OCR results
-- Ensure cropped images have sufficient resolution
-- Adjust preprocessing parameters
-- Try different Tesseract PSM modes
+The new multi-angle OCR should significantly improve results by trying 4 different rotations. If still having issues:
+- Ensure cropped images have sufficient resolution (automatically scaled to min 100x100)
+- Check the rotation angle reported in results - it shows which orientation worked best
+- Review the confidence scores in the output
+- The system now uses enhanced preprocessing (CLAHE, denoising, sharpening)
+
+### Database connection failed
+If you see database connection errors:
+- Ensure Docker is running: `docker-compose ps`
+- Check database logs: `docker-compose logs postgres`
+- Verify environment variables in `.env` file
+- See [DATABASE.md](DATABASE.md) for detailed troubleshooting
 
 ## Contributing
 
