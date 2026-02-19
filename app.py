@@ -59,10 +59,12 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Initialize session state
-if "db" not in st.session_state and DB_AVAILABLE:
+if DB_AVAILABLE and not st.session_state.get("db_connected", False):
     try:
         st.session_state.db = get_db_manager_from_env()
         st.session_state.db_connected = st.session_state.db.test_connection()
+        if st.session_state.db_connected and "db_error" in st.session_state:
+            del st.session_state.db_error
     except Exception as e:
         st.session_state.db_connected = False
         st.session_state.db_error = str(e)
@@ -83,9 +85,14 @@ if DB_AVAILABLE:
     if st.session_state.get("db_connected", False):
         st.sidebar.success("\u2705 Database Connected")
     else:
-        st.sidebar.error("\u274c Database Disconnected")
+        st.sidebar.warning("\u26a0\ufe0f Database Disconnected")
         if "db_error" in st.session_state:
             st.sidebar.text(f"Error: {st.session_state.db_error}")
+        if st.sidebar.button("\U0001f504 Retry Connection"):
+            st.session_state.db_connected = False
+            if "db_error" in st.session_state:
+                del st.session_state.db_error
+            st.rerun()
 else:
     st.sidebar.warning("\u26a0\ufe0f Database Module Not Available")
 
