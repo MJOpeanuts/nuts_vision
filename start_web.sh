@@ -36,8 +36,13 @@ source venv/bin/activate
 
 # Install/update dependencies
 echo "Checking dependencies..."
-pip install -q -r requirements.txt
-echo "✅ Dependencies ready"
+if pip install -q --timeout 30 -r requirements.txt; then
+    echo "✅ Dependencies ready"
+else
+    echo "⚠️  Failed to install dependencies (check your network connection)"
+    echo "   If packages are already installed, the app may still work."
+    echo "   Run: pip install -r requirements.txt"
+fi
 echo ""
 
 # Set environment variables if .env exists

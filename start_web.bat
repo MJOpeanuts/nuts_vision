@@ -21,8 +21,14 @@ call venv\Scripts\activate.bat
 
 REM Install/update dependencies
 echo Checking dependencies...
-pip install -q -r requirements.txt
-echo Dependencies ready
+pip install -q --timeout 30 -r requirements.txt
+if %ERRORLEVEL% EQU 0 (
+    echo Dependencies ready
+) else (
+    echo WARNING: Failed to install dependencies ^(check your network connection^)
+    echo If packages are already installed, the app may still work.
+    echo Run: pip install -r requirements.txt
+)
 echo.
 
 REM Set environment variables if .env exists
