@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Example/Demo Script for nuts_vision
-Demonstrates the usage of the component detection and OCR pipeline.
+Demonstrates the usage of the component detection pipeline.
 """
 
 import sys
@@ -12,102 +12,62 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from detect import ComponentDetector
 from crop import ComponentCropper
-from ocr import ComponentOCR
 from visualize import DetectionVisualizer
 
 
 def example_detection_only():
-    """Example: Detection only without OCR."""
+    """Example: Detection only."""
     print("="*60)
     print("EXAMPLE 1: Component Detection Only")
     print("="*60)
-    
-    # Check if model exists
+
     model_path = "models/best.pt"
     if not Path(model_path).exists():
         print(f"\nError: Model not found at {model_path}")
         print("Please train a model first:")
         print("  python src/train.py --data data.yaml --epochs 100")
         return
-    
-    # Initialize detector
+
     detector = ComponentDetector(model_path, conf_threshold=0.3)
-    
-    # Detect components
+
     print("\nDetecting components...")
     detections = detector.detect_components(
         "path/to/your/board_image.jpg",
         save_visualization=True,
         output_dir="outputs/results"
     )
-    
-    # Print results
+
     print(f"\nDetected {len(detections)} components:")
     for i, det in enumerate(detections, 1):
         print(f"  {i}. {det['class_name']}: confidence={det['confidence']:.2f}")
 
 
-def example_full_pipeline():
-    """Example: Full pipeline with detection, cropping, and OCR."""
+def example_pipeline():
+    """Example: Detection + cropping via pipeline."""
     print("="*60)
-    print("EXAMPLE 2: Full Pipeline (Detection + Cropping + OCR)")
+    print("EXAMPLE 2: Full Pipeline (Detection + Cropping)")
     print("="*60)
-    
+
+    # Use the pipeline for the recommended workflow
+    from pipeline import ComponentAnalysisPipeline
+
     model_path = "models/best.pt"
     image_path = "path/to/your/board_image.jpg"
-    
-    # Check requirements
+
     if not Path(model_path).exists():
         print(f"\nError: Model not found at {model_path}")
         return
-    
+
     if not Path(image_path).exists():
         print(f"\nError: Image not found at {image_path}")
         return
-    
-    # Step 1: Detection
-    print("\n[1/4] Detecting components...")
-    detector = ComponentDetector(model_path)
-    detections = detector.detect_components(
-        image_path,
-        output_dir="outputs/results"
-    )
-    print(f"  Found {len(detections)} components")
-    
-    # Step 2: Cropping
-    print("\n[2/4] Cropping components...")
-    cropper = ComponentCropper(padding=10)
-    cropped_paths = cropper.crop_from_detections(
-        image_path,
-        detections,
-        output_dir="outputs/cropped_components"
-    )
-    print(f"  Saved {len(cropped_paths)} cropped images")
-    
-    # Step 3: OCR (only for ICs)
-    print("\n[3/4] Extracting MPNs from ICs...")
-    ocr = ComponentOCR()
-    df = ocr.process_directory(
-        "outputs/cropped_components",
-        output_csv="outputs/results/mpn_results.csv",
-        component_filter=['IC']
-    )
-    
-    if not df.empty:
-        successful = df[df['mpn'].notna() & (df['mpn'] != '')].shape[0]
-        print(f"  Extracted {successful}/{len(df)} MPNs")
-    
-    # Step 4: Visualization
-    print("\n[4/4] Creating visualizations...")
-    viz = DetectionVisualizer("outputs/visualizations")
-    viz.plot_detection_statistics("outputs/results/detections.json")
-    if not df.empty:
-        viz.plot_ocr_results("outputs/results/mpn_results.csv")
-    print("  Visualizations saved")
-    
-    print("\n" + "="*60)
-    print("Pipeline complete! Check the outputs/ directory")
-    print("="*60)
+
+    pipeline = ComponentAnalysisPipeline(model_path)
+    result = pipeline.process_image(image_path, jobs_base_dir="jobs")
+
+    print(f"\nJob folder: {result['job_folder']}")
+    print(f"Total detections: {result['metadata']['total_detections']}")
+    print(f"Crops saved: {len(result['crop_photos'])}")
 
 
 def example_batch_processing():
@@ -115,28 +75,21 @@ def example_batch_processing():
     print("="*60)
     print("EXAMPLE 3: Batch Processing Multiple Images")
     print("="*60)
-    
+
     model_path = "models/best.pt"
     image_dir = "path/to/your/images/"
-    
-    # Check requirements
+
     if not Path(model_path).exists():
         print(f"\nError: Model not found at {model_path}")
         return
-    
+
     if not Path(image_dir).exists():
         print(f"\nError: Directory not found at {image_dir}")
         return
-    
-    # Process all images
-    print("\nProcessing all images in directory...")
+
     detector = ComponentDetector(model_path)
-    all_detections = detector.batch_detect(
-        image_dir,
-        output_dir="outputs/results"
-    )
-    
-    # Summary
+    all_detections = detector.batch_detect(image_dir, output_dir="outputs/results")
+
     total = sum(len(dets) for dets in all_detections.values())
     print(f"\nProcessed {len(all_detections)} images")
     print(f"Total components detected: {total}")
@@ -145,23 +98,23 @@ def example_batch_processing():
 def main():
     """Run all examples."""
     print("\n" + "="*60)
-    print("nuts_vision - Component Detection & OCR Examples")
+    print("nuts_vision - Component Detection Examples")
     print("="*60)
     print("\nThis script demonstrates the usage of nuts_vision.")
     print("\nIMPORTANT: Update the image paths in this script before running!")
     print("\nAvailable examples:")
     print("  1. Detection only")
-    print("  2. Full pipeline (detection + cropping + OCR)")
+    print("  2. Full pipeline (detection + cropping, per-job folder)")
     print("  3. Batch processing")
     print("\nTo run an example, edit this file and uncomment the desired function.")
     print("="*60 + "\n")
-    
+
     # Uncomment the example you want to run:
-    
+
     # example_detection_only()
-    # example_full_pipeline()
+    # example_pipeline()
     # example_batch_processing()
-    
+
     print("\nTo get started:")
     print("\n1. Train a model:")
     print("   python src/train.py --data data.yaml --epochs 100")

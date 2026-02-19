@@ -22,13 +22,6 @@ except ImportError as e:
     sys.exit(1)
 
 print("   ℹ️  Skipping pipeline module (requires ultralytics/YOLO)")
-# Pipeline requires YOLO which needs heavy dependencies
-# try:
-#     from pipeline import ComponentAnalysisPipeline
-#     print("   ✅ pipeline module imported successfully")
-# except ImportError as e:
-#     print(f"   ❌ Failed to import pipeline module: {e}")
-#     sys.exit(1)
 
 # Test 2: Check streamlit
 print("\n2. Testing Streamlit installation...")
@@ -39,17 +32,8 @@ except ImportError:
     print("   ❌ Streamlit not installed")
     sys.exit(1)
 
-# Test 3: Check FastAPI
-print("\n3. Testing FastAPI installation...")
-try:
-    import fastapi
-    print(f"   ✅ FastAPI installed")
-except ImportError:
-    print("   ❌ FastAPI not installed")
-    sys.exit(1)
-
-# Test 4: Verify database module methods
-print("\n4. Testing database module methods...")
+# Test 3: Verify database module methods
+print("\n3. Testing database module methods...")
 db = DatabaseManager()
 methods_to_check = [
     'test_connection',
@@ -57,10 +41,10 @@ methods_to_check = [
     'start_job',
     'end_job',
     'log_detection',
+    'log_cropped_component',
     'get_all_images',
     'get_all_jobs',
     'get_all_detections',
-    'get_all_ocr_results',
     'get_detection_statistics'
 ]
 
@@ -70,8 +54,8 @@ for method in methods_to_check:
     else:
         print(f"   ❌ {method} method missing")
 
-# Test 5: Check app.py syntax
-print("\n5. Testing app.py syntax...")
+# Test 4: Check app.py syntax
+print("\n4. Testing app.py syntax...")
 try:
     with open('app.py', 'r') as f:
         code = f.read()
@@ -81,8 +65,8 @@ except SyntaxError as e:
     print(f"   ❌ Syntax error in app.py: {e}")
     sys.exit(1)
 
-# Test 6: Check startup scripts
-print("\n6. Testing startup scripts...")
+# Test 5: Check startup scripts
+print("\n5. Testing startup scripts...")
 scripts = ['start_web.sh', 'start_web.bat']
 for script in scripts:
     if Path(script).exists():
@@ -90,8 +74,8 @@ for script in scripts:
     else:
         print(f"   ❌ {script} missing")
 
-# Test 7: Check documentation
-print("\n7. Testing documentation...")
+# Test 6: Check documentation
+print("\n6. Testing documentation...")
 docs = ['INTERFACE_WEB.md']
 for doc in docs:
     if Path(doc).exists():
