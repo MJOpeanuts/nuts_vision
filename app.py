@@ -2,9 +2,10 @@
 """
 Streamlit Web Interface for nuts_vision
 Provides a graphical interface for:
-- Image upload and processing
-- Supabase-like database viewer
-- Results visualization
+- PCB image upload and component detection
+- Per-job viewer (input photo, result photo, cropped components, metadata)
+- Database viewer
+- Statistics
 """
 
 import streamlit as st
@@ -15,8 +16,6 @@ from datetime import datetime
 import os
 from PIL import Image
 import json
-import time
-import cv2
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -34,12 +33,12 @@ except ImportError as e:
 # Page configuration
 st.set_page_config(
     page_title="nuts_vision - Electronic Component Analyzer",
-    page_icon="🔧",
+    page_icon="\U0001f527",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for better styling
+# Custom CSS
 st.markdown("""
 <style>
     .main-header {
@@ -55,36 +54,12 @@ st.markdown("""
         margin-top: 2rem;
         margin-bottom: 1rem;
     }
-    .stat-box {
-        background-color: #f0f2f6;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        border-left: 4px solid #1f77b4;
-    }
-    .success-box {
-        background-color: #d4edda;
-        border-color: #c3e6cb;
-        color: #155724;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        border-left: 4px solid #28a745;
-    }
-    .error-box {
-        background-color: #f8d7da;
-        border-color: #f5c6cb;
-        color: #721c24;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        border-left: 4px solid #dc3545;
-    }
-    .dataframe {
-        font-size: 0.9rem;
-    }
+    .dataframe { font-size: 0.9rem; }
 </style>
 """, unsafe_allow_html=True)
 
 # Initialize session state
-if 'db' not in st.session_state and DB_AVAILABLE:
+if "db" not in st.session_state and DB_AVAILABLE:
     try:
         st.session_state.db = get_db_manager_from_env()
         st.session_state.db_connected = st.session_state.db.test_connection()
@@ -92,1428 +67,490 @@ if 'db' not in st.session_state and DB_AVAILABLE:
         st.session_state.db_connected = False
         st.session_state.db_error = str(e)
 
-# Sidebar navigation
-st.sidebar.markdown("## 🔧 nuts_vision")
+# Sidebar
+st.sidebar.markdown("## \U0001f527 nuts_vision")
 st.sidebar.markdown("**Electronic Component Analyzer**")
 st.sidebar.markdown("---")
 
 page = st.sidebar.radio(
     "Navigation",
-    ["🏠 Home", "📤 Upload & Process", "📷 Camera Control", "🔍 Job Viewer", "🗄️ Database Viewer", "📊 Statistics", "ℹ️ About"]
+    ["\U0001f3e0 Home", "\U0001f4e4 Upload & Process", "\U0001f50d Job Viewer",
+     "\U0001f5c4\ufe0f Database Viewer", "\U0001f4ca Statistics", "\u2139\ufe0f About"]
 )
 
 st.sidebar.markdown("---")
-
-# Database status in sidebar
 if DB_AVAILABLE:
-    if st.session_state.get('db_connected', False):
-        st.sidebar.success("✅ Database Connected")
+    if st.session_state.get("db_connected", False):
+        st.sidebar.success("\u2705 Database Connected")
     else:
-        st.sidebar.error("❌ Database Disconnected")
-        if 'db_error' in st.session_state:
+        st.sidebar.error("\u274c Database Disconnected")
+        if "db_error" in st.session_state:
             st.sidebar.text(f"Error: {st.session_state.db_error}")
 else:
-    st.sidebar.warning("⚠️ Database Module Not Available")
+    st.sidebar.warning("\u26a0\ufe0f Database Module Not Available")
 
 
 # ========== HOME PAGE ==========
-if page == "🏠 Home":
-    st.markdown('<div class="main-header">🔧 nuts_vision</div>', unsafe_allow_html=True)
-    st.markdown("### Electronic Component Detection & OCR System")
-    
+if page == "\U0001f3e0 Home":
+    st.markdown('<div class="main-header">\U0001f527 nuts_vision</div>', unsafe_allow_html=True)
+    st.markdown("### Electronic Component Detection System")
     st.markdown("""
-    Welcome to **nuts_vision** - an automated system for analyzing electronic circuit boards using computer vision.
-    
-    #### 🎯 Key Features:
-    
-    - **Component Detection**: Automatically detect 16 types of electronic components using YOLOv8
-    - **Image Processing**: Advanced preprocessing for accurate component recognition
-    - **OCR Extraction**: Extract manufacturer part numbers (MPNs) from IC components
-    - **Database Tracking**: Complete tracing of all processing operations
-    - **Visualization**: Generate statistics and visual analysis of results
-    
-    #### 📋 Detectable Components:
+    Welcome to **nuts_vision** — an automated system for analyzing electronic circuit boards.
+
+    #### \U0001f3af How it works:
+    1. **Upload** a photo of an electronic circuit board
+    2. **Detect** — YOLOv8 identifies and classifies every component
+    3. **Crop** — each detected component is saved as a separate image
+    4. **Browse** — all results are organized in a per-job folder
+
+    #### \U0001f4cb Detectable Components:
     """)
-    
     components = [
         "IC (Integrated Circuit)", "LED", "Battery", "Buzzer",
         "Capacitor", "Clock", "Connector", "Diode",
         "Display", "Fuse", "Inductor", "Potentiometer",
         "Relay", "Resistor", "Switch", "Transistor"
     ]
-    
     cols = st.columns(4)
     for idx, comp in enumerate(components):
-        cols[idx % 4].markdown(f"✓ {comp}")
-    
+        cols[idx % 4].markdown(f"\u2713 {comp}")
+
     st.markdown("---")
-    
     st.markdown("""
-    #### 🚀 Quick Start:
-    
-    1. **Upload & Process**: Upload PCB images and run detection
-    2. **Database Viewer**: Browse all processing results in Supabase-like tables
-    3. **Statistics**: View analytics and visualizations
-    
-    #### 📖 Navigation:
-    - Use the sidebar to navigate between different sections
-    - Check database connection status in the sidebar
+    #### \U0001f4c1 Output structure (per job):
+    ```
+    jobs/
+      <image_name>_<date>_<time>/
+        input.<ext>    — original photo
+        result.jpg     — annotated photo with bounding boxes
+        crops/         — one cropped image per detected component
+        metadata.json  — detection data
+    ```
     """)
-    
-    # Show quick stats if database is available
-    if st.session_state.get('db_connected', False):
+
+    if st.session_state.get("db_connected", False):
         try:
             stats = st.session_state.db.get_detection_statistics()
-            
             st.markdown("---")
-            st.markdown("### 📊 Quick Statistics")
-            
-            col1, col2, col3, col4, col5 = st.columns(5)
-            
+            st.markdown("### \U0001f4ca Quick Statistics")
+            col1, col2, col3 = st.columns(3)
             with col1:
-                st.metric("Total Images", stats.get('total_images', 0))
+                st.metric("Total Images", stats.get("total_images", 0))
             with col2:
-                st.metric("Total Jobs", stats.get('total_jobs', 0))
+                st.metric("Total Jobs", stats.get("total_jobs", 0))
             with col3:
-                st.metric("Detections", stats.get('total_detections', 0))
-            with col4:
-                st.metric("OCR Results", stats.get('total_ocr_results', 0))
-            with col5:
-                st.metric("MPNs Extracted", stats.get('successful_mpn_extractions', 0))
-            
+                st.metric("Detections", stats.get("total_detections", 0))
         except Exception as e:
             st.warning(f"Could not load statistics: {e}")
 
 
 # ========== UPLOAD & PROCESS PAGE ==========
-elif page == "📤 Upload & Process":
-    st.markdown('<div class="main-header">📤 Upload & Process Images</div>', unsafe_allow_html=True)
-    
-    # Check if model exists
+elif page == "\U0001f4e4 Upload & Process":
+    st.markdown('<div class="main-header">\U0001f4e4 Upload & Process Images</div>', unsafe_allow_html=True)
+
     default_model_path = "runs/detect/component_detector/weights/best.pt"
     model_exists = Path(default_model_path).exists()
-    
+
     if not model_exists:
         st.warning("""
-        ⚠️ **Model not found!**
-        
-        The YOLO model hasn't been trained yet. Please train a model first:
+        \u26a0\ufe0f **Model not found!**
+        Train a model first:
         ```bash
         python src/train.py --data data.yaml --epochs 100 --model-size n
         ```
-        
         Or specify a custom model path below.
         """)
-    
-    # Model configuration
+
     st.markdown("### Model Configuration")
     col1, col2 = st.columns([3, 1])
-    
     with col1:
-        model_path = st.text_input(
-            "Model Path",
-            value=default_model_path if model_exists else "",
-            help="Path to the trained YOLO model (best.pt)"
-        )
-    
+        model_path = st.text_input("Model Path", value=default_model_path if model_exists else "",
+                                    help="Path to the trained YOLO model (best.pt)")
     with col2:
-        conf_threshold = st.slider(
-            "Confidence Threshold",
-            min_value=0.1,
-            max_value=0.9,
-            value=0.25,
-            step=0.05,
-            help="Minimum confidence score for detections"
-        )
-    
-    # Upload section
+        conf_threshold = st.slider("Confidence Threshold", min_value=0.1, max_value=0.9,
+                                    value=0.25, step=0.05)
+
     st.markdown("### Upload Images")
-    uploaded_files = st.file_uploader(
-        "Choose PCB images",
-        type=['jpg', 'jpeg', 'png'],
-        accept_multiple_files=True,
-        help="Upload one or more images of electronic circuit boards"
-    )
-    
-    # Processing options
+    uploaded_files = st.file_uploader("Choose PCB images", type=["jpg", "jpeg", "png"],
+                                       accept_multiple_files=True)
+
     st.markdown("### Processing Options")
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        extract_mpn = st.checkbox("Extract MPNs (OCR)", value=True, help="Run OCR to extract part numbers from ICs")
-    with col2:
-        use_database = st.checkbox("Log to Database", value=True, help="Save results to database")
-    with col3:
-        create_viz = st.checkbox("Create Visualizations", value=True, help="Generate charts and graphs")
-    
-    # Process button
-    if st.button("🚀 Start Processing", type="primary", disabled=not uploaded_files or not model_path):
+    use_database = st.checkbox("Log to Database", value=True)
+
+    if st.button("\U0001f680 Start Processing", type="primary",
+                 disabled=not uploaded_files or not model_path):
         if not Path(model_path).exists():
             st.error(f"Model file not found: {model_path}")
         else:
-            # Create persistent directory for uploaded images
-            # Store in outputs/images_input so they persist with other outputs
-            upload_dir = Path("outputs") / "images_input"
+            upload_dir = Path("jobs") / "_uploads"
             upload_dir.mkdir(parents=True, exist_ok=True)
-            
             progress_bar = st.progress(0)
             status_text = st.empty()
-            
             try:
-                # Initialize pipeline
                 status_text.text("Initializing pipeline...")
                 pipeline = ComponentAnalysisPipeline(
                     model_path=model_path,
                     conf_threshold=conf_threshold,
-                    use_database=use_database and st.session_state.get('db_connected', False)
+                    use_database=use_database and st.session_state.get("db_connected", False)
                 )
-                
-                # Process each uploaded file
                 total_files = len(uploaded_files)
                 results_summary = []
-                
                 for idx, uploaded_file in enumerate(uploaded_files):
                     status_text.text(f"Processing {uploaded_file.name} ({idx+1}/{total_files})...")
-                    progress_bar.progress((idx) / total_files)
-                    
-                    # Save uploaded file to persistent location with absolute path
+                    progress_bar.progress(idx / total_files)
                     file_path = upload_dir / uploaded_file.name
                     with open(file_path, "wb") as f:
                         f.write(uploaded_file.getbuffer())
-                    
-                    # Convert to absolute path for storage
-                    absolute_file_path = file_path.resolve()
-                    
-                    # Run pipeline with absolute path
                     try:
-                        pipeline.run_pipeline(
-                            image_path=str(absolute_file_path),
-                            extract_mpn=extract_mpn,
-                            create_visualizations=create_viz
-                        )
+                        result = pipeline.process_image(str(file_path.resolve()), jobs_base_dir="jobs")
                         results_summary.append({
-                            'file': uploaded_file.name,
-                            'status': '✅ Success',
-                            'path': str(absolute_file_path)
+                            "file": uploaded_file.name,
+                            "status": "\u2705 Success",
+                            "job_folder": result["job_folder"],
+                            "detections": result["metadata"]["total_detections"]
                         })
                     except Exception as e:
                         results_summary.append({
-                            'file': uploaded_file.name,
-                            'status': f'❌ Error: {str(e)}',
-                            'path': str(absolute_file_path)
+                            "file": uploaded_file.name,
+                            "status": f"\u274c Error: {str(e)}",
+                            "job_folder": "",
+                            "detections": 0
                         })
-                
                 progress_bar.progress(1.0)
                 status_text.text("Processing complete!")
-                
-                # Show results
-                st.success("✅ Processing completed!")
-                
+                st.success("\u2705 Processing completed!")
                 st.markdown("### Results Summary")
-                df_results = pd.DataFrame(results_summary)
-                st.dataframe(df_results, use_container_width=True)
-                
-                # Show output location
-                st.info("""
-                📁 **Output Location**: `outputs/`
-                - Uploaded images: `outputs/images_input/`
-                - Detection results: `outputs/results/`
-                - Cropped components: `outputs/cropped_components/`
-                - Visualizations: `outputs/visualizations/`
-                """)
-                
+                st.dataframe(pd.DataFrame(results_summary), use_container_width=True)
+                st.info("\U0001f4c1 View detailed results in the **Job Viewer** page.")
             except Exception as e:
                 st.error(f"Error during processing: {str(e)}")
                 import traceback
                 st.code(traceback.format_exc())
-    
-    # Show upload preview
+
     if uploaded_files:
         st.markdown("---")
-        st.markdown("### 📷 Uploaded Images Preview")
-        
+        st.markdown("### \U0001f4f7 Uploaded Images Preview")
         cols = st.columns(min(3, len(uploaded_files)))
-        for idx, uploaded_file in enumerate(uploaded_files[:6]):  # Show max 6 previews
+        for idx, uploaded_file in enumerate(uploaded_files[:6]):
             with cols[idx % 3]:
-                image = Image.open(uploaded_file)
-                st.image(image, caption=uploaded_file.name, use_container_width=True)
+                st.image(Image.open(uploaded_file), caption=uploaded_file.name, use_container_width=True)
 
 
 # ========== JOB VIEWER PAGE ==========
-elif page == "🔍 Job Viewer":
-    st.markdown('<div class="main-header">🔍 Job Viewer</div>', unsafe_allow_html=True)
-    st.markdown("### View Saved Jobs with Images and OCR Results")
-    
-    if not st.session_state.get('db_connected', False):
-        st.error("""
-        ❌ **Database not connected!**
-        
-        Please ensure PostgreSQL is running and properly configured.
-        
-        **Quick Start with Docker:**
-        ```bash
-        docker-compose up -d
-        ```
-        """)
-    else:
+elif page == "\U0001f50d Job Viewer":
+    st.markdown('<div class="main-header">\U0001f50d Job Viewer</div>', unsafe_allow_html=True)
+    st.markdown("Browse results: input photo, annotated result, cropped components, and metadata.")
+
+    jobs_base = Path("jobs")
+    job_folders = sorted(
+        [d for d in jobs_base.iterdir() if d.is_dir() and (d / "metadata.json").exists()],
+        key=lambda d: d.stat().st_mtime, reverse=True
+    ) if jobs_base.exists() else []
+
+    db_jobs = []
+    if st.session_state.get("db_connected", False):
         try:
-            # Get all jobs
-            all_jobs = st.session_state.db.get_all_jobs()
-            
-            if not all_jobs:
-                st.info("No jobs found in database. Process some images first!")
+            db_jobs = st.session_state.db.get_all_jobs()
+        except Exception:
+            pass
+
+    if not job_folders and not db_jobs:
+        st.info("No jobs found yet. Upload and process a PCB image first!")
+    else:
+        fs_job_names = {d.name for d in job_folders}
+        job_options = [d.name for d in job_folders]
+        job_folder_map = {d.name: d for d in job_folders}
+        for job in db_jobs:
+            jname = job.get("job_name") or f"job_{job['job_id']}"
+            if jname not in fs_job_names:
+                job_options.append(f"{jname} (folder missing)")
+
+        if not job_options:
+            st.info("No jobs found.")
+        else:
+            selected_label = st.selectbox("Choose a job to inspect", job_options)
+            selected_name = selected_label.replace(" (folder missing)", "")
+            job_dir = job_folder_map.get(selected_name)
+
+            if job_dir and job_dir.exists():
+                with open(job_dir / "metadata.json") as f:
+                    metadata = json.load(f)
+
+                st.markdown("---")
+                st.markdown("### \U0001f4cb Job Information")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Job Name", metadata.get("job_name", "—"))
+                with col2:
+                    st.metric("Total Detections", metadata.get("total_detections", 0))
+                with col3:
+                    date_str = metadata.get("date", "")
+                    try:
+                        dt = datetime.fromisoformat(date_str)
+                        st.metric("Date", dt.strftime("%Y-%m-%d %H:%M:%S"))
+                    except Exception:
+                        st.metric("Date", date_str)
+                st.text(f"Model: {metadata.get('model', '—')}")
+                st.text(f"Folder: {job_dir}")
+
+                st.markdown("---")
+                st.markdown("### \U0001f4f8 Input Photo")
+                input_photos = list(job_dir.glob("input.*"))
+                if input_photos:
+                    try:
+                        st.image(Image.open(input_photos[0]), caption="Input", use_container_width=True)
+                    except Exception as e:
+                        st.error(f"Could not display input photo: {e}")
+                else:
+                    st.warning("Input photo not found.")
+
+                st.markdown("---")
+                st.markdown("### \U0001f3af Result Photo (Annotated)")
+                result_photo = job_dir / "result.jpg"
+                if result_photo.exists():
+                    try:
+                        st.image(Image.open(result_photo), caption="Detected components", use_container_width=True)
+                    except Exception as e:
+                        st.error(f"Could not display result photo: {e}")
+                else:
+                    st.warning("Result photo not found.")
+
+                crops_dir = job_dir / "crops"
+                crop_files = sorted(crops_dir.glob("*.jpg")) if crops_dir.exists() else []
+                detections = metadata.get("detections", [])
+
+                if crop_files:
+                    st.markdown("---")
+                    st.markdown(f"### \u2702\ufe0f Cropped Components ({len(crop_files)} total)")
+                    det_by_file = {d.get("crop_file"): d for d in detections if d.get("crop_file")}
+                    cols_per_row = 4
+                    rows = [crop_files[i:i+cols_per_row] for i in range(0, len(crop_files), cols_per_row)]
+                    for row in rows:
+                        cols = st.columns(cols_per_row)
+                        for col, crop_file in zip(cols, row):
+                            with col:
+                                try:
+                                    det = det_by_file.get(crop_file.name, {})
+                                    caption = det.get("class_name", crop_file.stem)
+                                    if "confidence" in det:
+                                        caption += f" ({det['confidence']:.2f})"
+                                    st.image(Image.open(crop_file), caption=caption, use_container_width=True)
+                                except Exception as e:
+                                    st.error(f"Error: {e}")
+                else:
+                    st.info("No cropped components found.")
+
+                st.markdown("---")
+                st.markdown("### \U0001f4c4 Metadata")
+                if detections:
+                    df_det = pd.DataFrame([
+                        {
+                            "index": d["index"], "class": d["class_name"],
+                            "confidence": d["confidence"],
+                            "x1": round(d["bbox"][0], 1), "y1": round(d["bbox"][1], 1),
+                            "x2": round(d["bbox"][2], 1), "y2": round(d["bbox"][3], 1),
+                            "crop_file": d.get("crop_file", "—")
+                        } for d in detections
+                    ])
+                    st.dataframe(df_det, use_container_width=True)
+                else:
+                    st.info("No detections in this job.")
+
+                with st.expander("\U0001f4c4 Raw metadata.json"):
+                    st.json(metadata)
             else:
-                # Job selector
-                st.markdown("### Select a Job")
-                
-                # Create a more readable job list
-                job_options = []
-                job_mapping = {}
-                for job in all_jobs:
-                    job_display_text = f"Job {job['job_id']} - {job['file_name']} ({job['detection_count']} detections)"
-                    job_options.append(job_display_text)
-                    job_mapping[job_display_text] = job
-                
-                selected_job_label = st.selectbox(
-                    "Choose a job to view details",
-                    job_options,
-                    help="Select a job to view its original image, cropped components, and OCR results"
-                )
-                
-                if selected_job_label:
-                    selected_job = job_mapping[selected_job_label]
-                    job_id = selected_job['job_id']
-                    
-                    # Display job information
-                    st.markdown("---")
-                    st.markdown("### 📋 Job Information")
-                    
-                    col1, col2, col3, col4 = st.columns(4)
-                    with col1:
-                        st.metric("Job ID", job_id)
-                    with col2:
-                        st.metric("Detections", selected_job['detection_count'])
-                    with col3:
-                        started = pd.to_datetime(selected_job['started_at']).strftime('%Y-%m-%d %H:%M:%S')
-                        st.metric("Started", started)
-                    with col4:
-                        if selected_job['ended_at']:
-                            ended = pd.to_datetime(selected_job['ended_at']).strftime('%Y-%m-%d %H:%M:%S')
-                            st.metric("Ended", ended)
-                        else:
-                            st.metric("Status", "Running")
-                    
-                    # Display original image
-                    st.markdown("---")
-                    st.markdown("### 📸 Original Image")
-                    
-                    original_image_path = selected_job['file_path']
-                    if os.path.exists(original_image_path):
-                        try:
-                            original_image = Image.open(original_image_path)
-                            st.image(original_image, caption=f"Original: {selected_job['file_name']}", use_container_width=True)
-                        except Exception as e:
-                            st.error(f"Error loading original image: {e}")
-                    else:
-                        st.warning(f"Original image not found at: {original_image_path}")
-                    
-                    # Get cropped ICs and OCR results for this job
-                    with st.session_state.db.get_connection() as conn:
-                        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                            cursor.execute("""
-                                SELECT 
-                                    ic.cropped_id,
-                                    ic.cropped_file_path,
-                                    ic.created_at,
-                                    d.class_name,
-                                    d.confidence,
-                                    d.bbox_x1,
-                                    d.bbox_y1,
-                                    d.bbox_x2,
-                                    d.bbox_y2,
-                                    o.ocr_id,
-                                    o.raw_text,
-                                    o.cleaned_mpn,
-                                    o.rotation_angle,
-                                    o.processed_at
-                                FROM ics_cropped ic
-                                JOIN detections d ON ic.detection_id = d.detection_id
-                                LEFT JOIN ics_ocr o ON ic.cropped_id = o.cropped_id
-                                WHERE ic.job_id = %s
-                                ORDER BY ic.cropped_id
-                            """, (job_id,))
-                            ic_components = [dict(row) for row in cursor.fetchall()]
-                    
-                    # Display cropped ICs and OCR results
-                    if ic_components:
-                        st.markdown("---")
-                        st.markdown(f"### ✂️ Cropped IC Components ({len(ic_components)} total)")
-                        
-                        # Display in a grid
-                        for idx, ic in enumerate(ic_components, 1):
-                            with st.expander(f"🔍 IC #{idx} - {ic['class_name']} (Confidence: {ic['confidence']:.2f})", expanded=(idx == 1)):
-                                col1, col2 = st.columns([1, 2])
-                                
-                                with col1:
-                                    # Display cropped image
-                                    cropped_path = ic['cropped_file_path']
-                                    if os.path.exists(cropped_path):
-                                        try:
-                                            cropped_img = Image.open(cropped_path)
-                                            st.image(cropped_img, caption=f"Cropped IC #{idx}", use_container_width=True)
-                                        except Exception as e:
-                                            st.error(f"Error loading cropped image: {e}")
-                                    else:
-                                        st.warning(f"Cropped image not found")
-                                    
-                                    # Show bounding box info
-                                    st.markdown("**Bounding Box:**")
-                                    st.text(f"X1: {ic['bbox_x1']:.1f}, Y1: {ic['bbox_y1']:.1f}")
-                                    st.text(f"X2: {ic['bbox_x2']:.1f}, Y2: {ic['bbox_y2']:.1f}")
-                                
-                                with col2:
-                                    # Display OCR results
-                                    st.markdown("**OCR Results:**")
-                                    
-                                    if ic['ocr_id']:
-                                        # MPN (cleaned)
-                                        if ic['cleaned_mpn']:
-                                            st.success(f"**MPN:** {ic['cleaned_mpn']}")
-                                        else:
-                                            st.warning("**MPN:** Not extracted")
-                                        
-                                        # Raw text
-                                        if ic['raw_text']:
-                                            st.markdown("**Raw OCR Text:**")
-                                            st.code(ic['raw_text'], language=None)
-                                        else:
-                                            st.info("No text detected")
-                                        
-                                        # Rotation angle
-                                        if ic['rotation_angle'] is not None:
-                                            st.text(f"Rotation: {ic['rotation_angle']}°")
-                                        
-                                        # Processing time
-                                        if ic['processed_at']:
-                                            processed_time = pd.to_datetime(ic['processed_at']).strftime('%Y-%m-%d %H:%M:%S')
-                                            st.text(f"Processed: {processed_time}")
-                                    else:
-                                        st.info("No OCR results available for this component")
-                                    
-                                    # File path
-                                    st.markdown("**File Path:**")
-                                    st.text(cropped_path)
-                        
-                        # Summary statistics
-                        st.markdown("---")
-                        st.markdown("### 📊 Summary")
-                        
-                        total_ics = len(ic_components)
-                        with_ocr = sum(1 for ic in ic_components if ic['ocr_id'] is not None)
-                        with_mpn = sum(1 for ic in ic_components if ic['cleaned_mpn'])
-                        
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric("Total ICs", total_ics)
-                        with col2:
-                            st.metric("OCR Processed", with_ocr)
-                        with col3:
-                            st.metric("MPNs Extracted", with_mpn)
-                            if with_ocr > 0:
-                                success_rate = (with_mpn / with_ocr) * 100
-                                st.caption(f"Success Rate: {success_rate:.1f}%")
-                    else:
-                        st.info("No cropped IC components found for this job.")
-                        
-        except Exception as e:
-            st.error(f"Error loading job data: {str(e)}")
-            import traceback
-            st.code(traceback.format_exc())
+                st.warning(f"Job folder not found on disk for: {selected_name}")
 
 
 # ========== DATABASE VIEWER PAGE ==========
-elif page == "🗄️ Database Viewer":
-    st.markdown('<div class="main-header">🗄️ Database Viewer</div>', unsafe_allow_html=True)
-    st.markdown("### Supabase-like Database Interface")
-    
-    if not st.session_state.get('db_connected', False):
+elif page == "\U0001f5c4\ufe0f Database Viewer":
+    st.markdown('<div class="main-header">\U0001f5c4\ufe0f Database Viewer</div>', unsafe_allow_html=True)
+
+    if not st.session_state.get("db_connected", False):
         st.error("""
-        ❌ **Database not connected!**
-        
-        Please ensure PostgreSQL is running and properly configured.
-        
-        **Quick Start with Docker:**
+        \u274c **Database not connected!**
+        Start PostgreSQL:
         ```bash
         docker-compose up -d
         ```
-        
-        **Environment Variables:**
-        - DB_HOST (default: localhost)
-        - DB_PORT (default: 5432)
-        - DB_NAME (default: nuts_vision)
-        - DB_USER (default: nuts_user)
-        - DB_PASSWORD (default: nuts_password)
+        Environment variables: DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
         """)
     else:
-        # Table selector
-        table_view = st.selectbox(
-            "Select Table",
-            ["📸 Images Input", "🔄 Jobs Log", "🎯 Detections", "✂️ Cropped ICs", "📝 OCR Results", "📷 Camera Captures"]
-        )
-        
-        # Refresh button
-        col1, col2 = st.columns([1, 5])
-        with col1:
-            if st.button("🔄 Refresh"):
-                st.rerun()
-        
+        table_view = st.selectbox("Select Table",
+            ["\U0001f4f8 Images Input", "\U0001f504 Jobs Log",
+             "\U0001f3af Detections", "\u2702\ufe0f Cropped Components"])
+
+        if st.button("\U0001f504 Refresh"):
+            st.rerun()
+
         try:
-            # Display selected table
-            if table_view == "📸 Images Input":
-                st.markdown("### Images Input Table")
-                st.markdown("*All uploaded/processed images*")
-                
+            if table_view == "\U0001f4f8 Images Input":
                 data = st.session_state.db.get_all_images()
                 if data:
                     df = pd.DataFrame(data)
-                    # Format timestamps
-                    if 'upload_at' in df.columns:
-                        df['upload_at'] = pd.to_datetime(df['upload_at']).dt.strftime('%Y-%m-%d %H:%M:%S')
-                    
+                    if "upload_at" in df.columns:
+                        df["upload_at"] = pd.to_datetime(df["upload_at"]).dt.strftime("%Y-%m-%d %H:%M:%S")
                     st.dataframe(df, use_container_width=True, height=400)
                     st.caption(f"Total records: {len(df)}")
                 else:
                     st.info("No images in database yet.")
-            
-            elif table_view == "🔄 Jobs Log":
-                st.markdown("### Jobs Log Table")
-                st.markdown("*All detection jobs and their status*")
-                
+
+            elif table_view == "\U0001f504 Jobs Log":
                 data = st.session_state.db.get_all_jobs()
                 if data:
                     df = pd.DataFrame(data)
-                    # Format timestamps
-                    for col in ['started_at', 'ended_at']:
+                    for col in ["started_at", "ended_at"]:
                         if col in df.columns:
-                            df[col] = pd.to_datetime(df[col]).dt.strftime('%Y-%m-%d %H:%M:%S')
-                    
+                            df[col] = pd.to_datetime(df[col]).dt.strftime("%Y-%m-%d %H:%M:%S")
                     st.dataframe(df, use_container_width=True, height=400)
                     st.caption(f"Total records: {len(df)}")
-                    
-                    # Show job details
                     if len(df) > 0:
                         st.markdown("---")
-                        st.markdown("### Job Details")
-                        job_id = st.selectbox("Select Job ID to view details", df['job_id'].tolist())
-                        
+                        job_id = st.selectbox("Select Job ID", df["job_id"].tolist())
                         if job_id:
                             stats = st.session_state.db.get_job_statistics(job_id)
-                            
-                            col1, col2, col3 = st.columns(3)
+                            col1, col2 = st.columns(2)
                             with col1:
-                                st.metric("Total Detections", stats.get('total_detections', 0))
+                                st.metric("Total Detections", stats.get("total_detections", 0))
                             with col2:
-                                st.metric("ICs Cropped", stats.get('total_ics_cropped', 0))
-                            with col3:
-                                st.metric("OCR Results", stats.get('total_ocr_results', 0))
+                                st.metric("Components Cropped", stats.get("total_crops", 0))
                 else:
                     st.info("No jobs in database yet.")
-            
-            elif table_view == "🎯 Detections":
-                st.markdown("### Detections Table")
-                st.markdown("*All component detections with bounding boxes*")
-                
-                # Optional filter by job
+
+            elif table_view == "\U0001f3af Detections":
                 all_jobs = st.session_state.db.get_all_jobs()
-                if all_jobs:
-                    job_options = ["All Jobs"] + [f"Job {j['job_id']} - {j['file_name']}" for j in all_jobs]
-                    selected_job = st.selectbox("Filter by Job", job_options)
-                    
-                    job_id = None
-                    if selected_job != "All Jobs":
-                        job_id = int(selected_job.split()[1])
-                    
-                    data = st.session_state.db.get_all_detections(job_id=job_id)
-                else:
-                    data = st.session_state.db.get_all_detections()
-                
+                job_options = ["All Jobs"] + [f"Job {j['job_id']} - {j['file_name']}" for j in all_jobs]
+                selected_job = st.selectbox("Filter by Job", job_options)
+                job_id = None
+                if selected_job != "All Jobs":
+                    job_id = int(selected_job.split()[1])
+                data = st.session_state.db.get_all_detections(job_id=job_id)
                 if data:
                     df = pd.DataFrame(data)
                     st.dataframe(df, use_container_width=True, height=400)
                     st.caption(f"Total records: {len(df)}")
-                    
-                    # Component type distribution
-                    if 'class_name' in df.columns:
+                    if "class_name" in df.columns:
                         st.markdown("---")
-                        st.markdown("### Component Distribution")
-                        component_counts = df['class_name'].value_counts()
-                        st.bar_chart(component_counts)
+                        st.bar_chart(df["class_name"].value_counts())
                 else:
                     st.info("No detections in database yet.")
-            
-            elif table_view == "✂️ Cropped ICs":
-                st.markdown("### Cropped ICs Table")
-                st.markdown("*All cropped IC component images*")
-                
-                # Query database
+
+            elif table_view == "\u2702\ufe0f Cropped Components":
                 with st.session_state.db.get_connection() as conn:
                     with conn.cursor() as cursor:
                         cursor.execute("""
-                            SELECT 
-                                ic.*,
-                                d.class_name,
-                                j.job_id
+                            SELECT ic.*, d.class_name, j.job_id, j.job_name
                             FROM ics_cropped ic
                             JOIN detections d ON ic.detection_id = d.detection_id
                             JOIN log_jobs j ON ic.job_id = j.job_id
-                            ORDER BY ic.created_at DESC
-                            LIMIT 100
+                            ORDER BY ic.created_at DESC LIMIT 100
                         """)
                         columns = [desc[0] for desc in cursor.description]
                         data = [dict(zip(columns, row)) for row in cursor.fetchall()]
-                
                 if data:
                     df = pd.DataFrame(data)
-                    if 'created_at' in df.columns:
-                        df['created_at'] = pd.to_datetime(df['created_at']).dt.strftime('%Y-%m-%d %H:%M:%S')
-                    
+                    if "created_at" in df.columns:
+                        df["created_at"] = pd.to_datetime(df["created_at"]).dt.strftime("%Y-%m-%d %H:%M:%S")
                     st.dataframe(df, use_container_width=True, height=400)
                     st.caption(f"Total records: {len(df)}")
                 else:
-                    st.info("No cropped ICs in database yet.")
-            
-            elif table_view == "📝 OCR Results":
-                st.markdown("### OCR Results Table")
-                st.markdown("*All OCR extractions with MPNs*")
-                
-                data = st.session_state.db.get_all_ocr_results()
-                
-                if data:
-                    df = pd.DataFrame(data)
-                    if 'processed_at' in df.columns:
-                        df['processed_at'] = pd.to_datetime(df['processed_at']).dt.strftime('%Y-%m-%d %H:%M:%S')
-                    
-                    st.dataframe(df, use_container_width=True, height=400)
-                    st.caption(f"Total records: {len(df)}")
-                    
-                    # Show success rate
-                    if 'cleaned_mpn' in df.columns:
-                        successful = df[df['cleaned_mpn'].notna() & (df['cleaned_mpn'] != '')].shape[0]
-                        total = len(df)
-                        success_rate = (successful / total * 100) if total > 0 else 0
-                        
-                        st.markdown("---")
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric("Total OCR Attempts", total)
-                        with col2:
-                            st.metric("Successful Extractions", successful)
-                        with col3:
-                            st.metric("Success Rate", f"{success_rate:.1f}%")
-                else:
-                    st.info("No OCR results in database yet.")
-            
-            elif table_view == "📷 Camera Captures":
-                st.markdown("### Camera Captures Table")
-                st.markdown("*All photos captured from Arducam 108MP camera*")
-                
-                # Filter by mode
-                mode_filter = st.radio(
-                    "Filter by Camera Mode:",
-                    ["All", "Preview Mode", "Scan Mode"],
-                    horizontal=True
-                )
-                
-                camera_mode_param = None
-                if mode_filter == "Preview Mode":
-                    camera_mode_param = "preview"
-                elif mode_filter == "Scan Mode":
-                    camera_mode_param = "scan"
-                
-                data = st.session_state.db.get_all_camera_captures(camera_mode=camera_mode_param)
-                
-                if data:
-                    df = pd.DataFrame(data)
-                    if 'captured_at' in df.columns:
-                        df['captured_at'] = pd.to_datetime(df['captured_at']).dt.strftime('%Y-%m-%d %H:%M:%S')
-                    
-                    # Format file size
-                    if 'file_size_bytes' in df.columns:
-                        df['file_size_mb'] = (df['file_size_bytes'] / (1024 * 1024)).round(2)
-                    
-                    st.dataframe(df, use_container_width=True, height=400)
-                    st.caption(f"Total records: {len(df)}")
-                    
-                    # Show statistics
-                    st.markdown("---")
-                    st.markdown("### Capture Statistics")
-                    
-                    col1, col2, col3, col4 = st.columns(4)
-                    with col1:
-                        preview_count = len(df[df['camera_mode'] == 'preview']) if 'camera_mode' in df.columns else 0
-                        st.metric("Preview Captures", preview_count)
-                    with col2:
-                        scan_count = len(df[df['camera_mode'] == 'scan']) if 'camera_mode' in df.columns else 0
-                        st.metric("Scan Captures", scan_count)
-                    with col3:
-                        if 'file_size_mb' in df.columns:
-                            avg_size = df['file_size_mb'].mean()
-                            st.metric("Avg File Size", f"{avg_size:.2f} MB")
-                    with col4:
-                        total_size = df['file_size_mb'].sum() if 'file_size_mb' in df.columns else 0
-                        st.metric("Total Storage", f"{total_size:.2f} MB")
-                    
-                    # Resolution distribution
-                    if 'resolution_width' in df.columns and 'resolution_height' in df.columns:
-                        st.markdown("---")
-                        st.markdown("### Resolution Distribution")
-                        df['resolution'] = df['resolution_width'].astype(str) + 'x' + df['resolution_height'].astype(str)
-                        resolution_counts = df['resolution'].value_counts()
-                        st.bar_chart(resolution_counts)
-                else:
-                    st.info("No camera captures in database yet. Use the Camera Control page to capture photos!")
-            
+                    st.info("No cropped components in database yet.")
+
         except Exception as e:
-            st.error(f"Error loading data: {str(e)}")
+            st.error(f"Error: {str(e)}")
             import traceback
             st.code(traceback.format_exc())
 
 
 # ========== STATISTICS PAGE ==========
-elif page == "📊 Statistics":
-    st.markdown('<div class="main-header">📊 Statistics & Analytics</div>', unsafe_allow_html=True)
-    
-    if not st.session_state.get('db_connected', False):
+elif page == "\U0001f4ca Statistics":
+    st.markdown('<div class="main-header">\U0001f4ca Statistics & Analytics</div>', unsafe_allow_html=True)
+
+    if not st.session_state.get("db_connected", False):
         st.warning("Database not connected. Statistics require database access.")
     else:
         try:
             stats = st.session_state.db.get_detection_statistics()
-            
-            # Overview metrics
-            st.markdown("### 📈 Overview")
-            col1, col2, col3, col4, col5 = st.columns(5)
-            
+            col1, col2, col3 = st.columns(3)
             with col1:
-                st.metric("Total Images", stats.get('total_images', 0))
+                st.metric("Total Images", stats.get("total_images", 0))
             with col2:
-                st.metric("Total Jobs", stats.get('total_jobs', 0))
+                st.metric("Total Jobs", stats.get("total_jobs", 0))
             with col3:
-                st.metric("Total Detections", stats.get('total_detections', 0))
-            with col4:
-                st.metric("OCR Results", stats.get('total_ocr_results', 0))
-            with col5:
-                mpn_success = stats.get('successful_mpn_extractions', 0)
-                total_ocr = stats.get('total_ocr_results', 1)
-                success_rate = (mpn_success / total_ocr * 100) if total_ocr > 0 else 0
-                st.metric("MPN Success Rate", f"{success_rate:.1f}%")
-            
-            # Component distribution
+                st.metric("Total Detections", stats.get("total_detections", 0))
+
             st.markdown("---")
-            st.markdown("### 🔧 Component Distribution")
-            
-            component_counts = stats.get('component_counts', {})
+            component_counts = stats.get("component_counts", {})
             if component_counts:
-                df_components = pd.DataFrame(
-                    list(component_counts.items()),
-                    columns=['Component', 'Count']
-                ).sort_values('Count', ascending=False)
-                
+                df_c = pd.DataFrame(list(component_counts.items()),
+                                     columns=["Component", "Count"]).sort_values("Count", ascending=False)
                 col1, col2 = st.columns([2, 1])
-                
                 with col1:
-                    st.bar_chart(df_components.set_index('Component'))
-                
+                    st.bar_chart(df_c.set_index("Component"))
                 with col2:
-                    st.dataframe(df_components, use_container_width=True, height=400)
+                    st.dataframe(df_c, use_container_width=True)
             else:
                 st.info("No component data available yet.")
-            
-            # Recent jobs
+
             st.markdown("---")
-            st.markdown("### 🕐 Recent Jobs")
-            
             recent_jobs = st.session_state.db.get_all_jobs(limit=10)
             if recent_jobs:
-                df_jobs = pd.DataFrame(recent_jobs)
-                
-                # Format timestamps
-                for col in ['started_at', 'ended_at']:
-                    if col in df_jobs.columns:
-                        df_jobs[col] = pd.to_datetime(df_jobs[col]).dt.strftime('%Y-%m-%d %H:%M:%S')
-                
-                st.dataframe(
-                    df_jobs[['job_id', 'file_name', 'started_at', 'detection_count']],
-                    use_container_width=True
-                )
+                df_j = pd.DataFrame(recent_jobs)
+                for col in ["started_at", "ended_at"]:
+                    if col in df_j.columns:
+                        df_j[col] = pd.to_datetime(df_j[col]).dt.strftime("%Y-%m-%d %H:%M:%S")
+                show_cols = [c for c in ["job_id", "job_name", "file_name", "started_at", "detection_count"]
+                             if c in df_j.columns]
+                st.dataframe(df_j[show_cols], use_container_width=True)
             else:
                 st.info("No jobs recorded yet.")
-            
-            # Camera capture statistics
-            st.markdown("---")
-            st.markdown("### 📷 Camera Capture Statistics")
-            
-            try:
-                camera_stats = st.session_state.db.get_camera_capture_statistics()
-                
-                if camera_stats and camera_stats.get('total_captures', 0) > 0:
-                    col1, col2, col3, col4 = st.columns(4)
-                    
-                    with col1:
-                        st.metric("Total Captures", camera_stats.get('total_captures', 0))
-                    with col2:
-                        st.metric("Preview Mode", camera_stats.get('preview_captures', 0))
-                    with col3:
-                        st.metric("Scan Mode", camera_stats.get('scan_captures', 0))
-                    with col4:
-                        avg_size = camera_stats.get('avg_file_size', 0)
-                        if avg_size:
-                            avg_size_mb = avg_size / (1024 * 1024)
-                            st.metric("Avg File Size", f"{avg_size_mb:.2f} MB")
-                        else:
-                            st.metric("Avg File Size", "N/A")
-                    
-                    # Show last capture time
-                    last_capture = camera_stats.get('last_capture_time')
-                    if last_capture:
-                        st.info(f"📸 Last capture: {pd.to_datetime(last_capture).strftime('%Y-%m-%d %H:%M:%S')}")
-                else:
-                    st.info("No camera captures recorded yet. Use the Camera Control page to start capturing!")
-            except Exception as e:
-                st.warning(f"Could not load camera statistics: {e}")
-            
+
         except Exception as e:
-            st.error(f"Error loading statistics: {str(e)}")
+            st.error(f"Error: {str(e)}")
 
 
 # ========== ABOUT PAGE ==========
-
-
-# ========== CAMERA CONTROL PAGE ==========
-elif page == "📷 Camera Control":
-    st.markdown('<div class="main-header">📷 Arducam 108MP Camera Control</div>', unsafe_allow_html=True)
-    
+elif page == "\u2139\ufe0f About":
+    st.markdown('<div class="main-header">\u2139\ufe0f About nuts_vision</div>', unsafe_allow_html=True)
     st.markdown("""
-    Control your Arducam 108MP Motorized Focus USB 3.0 Camera to capture high-quality images
-    for component analysis.
-    
-    **Features:**
-    - Connect to Arducam 108MP camera
-    - Adjust motorized focus (manual or auto)
-    - Capture high-resolution photos
-    - Process captured photos with existing pipeline
-    """)
-    
-    st.markdown("---")
-    
-    # Import camera control
-    try:
-        from camera_control import ArducamCamera
-        camera_available = True
-    except ImportError as e:
-        st.error(f"Camera control module not available: {e}")
-        camera_available = False
-    
-    if not camera_available:
-        st.stop()
-    
-    # Initialize session state for camera
-    if 'camera' not in st.session_state:
-        st.session_state.camera = None
-        st.session_state.camera_connected = False
-        st.session_state.preview_running = False
-        st.session_state.camera_mode = 'preview'  # 'preview' or 'scan'
-    
-    # Camera Mode & Connection Section
-    st.markdown('<div class="sub-header">📷 Camera Mode Selection</div>', unsafe_allow_html=True)
-    
-    st.markdown("""
-    **Two simple modes for optimal workflow:**
-    - **🎥 Preview Mode:** Fast & smooth (720p@60fps) - Perfect for adjusting focus, exposure, and all settings
-    - **📸 Scan Mode:** High quality capture - Choose 4K or Ultra High Quality for final images
-    """)
-    
-    # Mode selector
-    col_mode1, col_mode2 = st.columns(2)
-    
-    with col_mode1:
-        camera_mode = st.radio(
-            "Select Camera Mode:",
-            options=['preview', 'scan'],
-            format_func=lambda x: "🎥 Preview Mode (720p@60fps - Fast)" if x == 'preview' else "📸 Scan Mode (4K/Ultra HQ)",
-            index=0 if st.session_state.camera_mode == 'preview' else 1,
-            help="Preview Mode: Fast & smooth for adjustments | Scan Mode: High quality for captures"
-        )
-        
-        # Update mode if changed
-        if camera_mode != st.session_state.camera_mode:
-            # If camera is connected and mode changed, need to reconnect
-            if st.session_state.camera_connected:
-                st.warning("⚠️ Mode changed. Please disconnect and reconnect to apply.")
-            st.session_state.camera_mode = camera_mode
-    
-    with col_mode2:
-        # Show current mode status
-        if camera_mode == 'preview':
-            st.success("🎥 **Preview Mode Active**")
-            st.info("Resolution: 1280x720 @ 60fps\nOptimal for adjustments")
-        else:
-            st.success("📸 **Scan Mode Active**")
-            st.info("High quality capture mode\nChoose resolution below")
-    
-    st.markdown("---")
-    
-    # Configuration based on mode
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        camera_index = st.number_input("Camera Index", min_value=0, max_value=10, value=0, 
-                                       help="Device index for the camera (usually 0)")
-        
-        # Resolution selection based on mode
-        if camera_mode == 'preview':
-            # Preview mode: fixed at 720p@60fps
-            width, height, fps = 1280, 720, 60
-            st.success("📐 **Fixed Resolution:** 1280x720 @ 60fps (optimized for smooth preview)")
-        else:
-            # Scan mode: choose between 4K and Ultra HQ
-            scan_quality = st.radio(
-                "Scan Quality:",
-                options=['4k', 'ultra_hq'],
-                format_func=lambda x: "4K UHD (3840x2160 @ 10fps)" if x == '4k' else "Ultra High Quality (4000x3000 @ 7fps)",
-                index=0,
-                help="4K: Good quality, faster | Ultra HQ: Best quality, slower"
-            )
-            
-            if scan_quality == '4k':
-                width, height, fps = 3840, 2160, 10
-                st.info("📐 Resolution: 3840x2160 @ 10fps (4K UHD)")
-            else:
-                width, height, fps = 4000, 3000, 7
-                st.info("📐 Resolution: 4000x3000 @ 7fps (Ultra High Quality)")
-    
-    with col2:
-        st.markdown("**Connection Status:**")
-        if st.session_state.camera_connected:
-            st.success("✅ Connected")
-            # Display current camera info
-            if st.session_state.camera:
-                info = st.session_state.camera.get_camera_info()
-                if info.get('connected'):
-                    st.markdown(f"**Mode:** {'🎥 Preview' if camera_mode == 'preview' else '📸 Scan'}")
-                    st.markdown(f"**Resolution:** {info['width']}x{info['height']}")
-                    st.markdown(f"**FPS:** {info['fps']}")
-                    st.markdown(f"**Focus:** {info['focus']}")
-        else:
-            st.warning("⚠️ Not Connected")
-    
-    st.markdown("---")
-    st.markdown('<div class="sub-header">🔌 Connection Controls</div>', unsafe_allow_html=True)
-    
-    # Connection buttons
-    col_btn1, col_btn2, col_btn3 = st.columns(3)
-    
-    with col_btn1:
-        if st.button("🔌 Connect", disabled=st.session_state.camera_connected):
-            with st.spinner("Connecting to camera..."):
-                st.session_state.camera = ArducamCamera(camera_index=camera_index)
-                success = st.session_state.camera.connect(width=width, height=height, fps=fps)
-                
-                if success:
-                    st.session_state.camera_connected = True
-                    st.success("Camera connected successfully!")
-                    st.rerun()
-                else:
-                    st.error("Failed to connect to camera. Please check the camera is plugged in and the index is correct.")
-                    st.session_state.camera = None
-    
-    with col_btn2:
-        if st.button("🔄 Disconnect", disabled=not st.session_state.camera_connected):
-            if st.session_state.camera:
-                st.session_state.camera.disconnect()
-                st.session_state.camera = None
-                st.session_state.camera_connected = False
-                st.session_state.preview_running = False
-                st.success("Camera disconnected")
-                st.rerun()
-    
-    with col_btn3:
-        if st.button("ℹ️ Camera Info", disabled=not st.session_state.camera_connected):
-            if st.session_state.camera:
-                info = st.session_state.camera.get_camera_info()
-                st.json(info)
-    
-    st.markdown("---")
-    
-    # Only show controls if camera is connected
-    if st.session_state.camera_connected and st.session_state.camera:
-        
-        # Preview Section - Moved to top for better ergonomics
-        if st.session_state.camera_mode == 'preview':
-            st.markdown('<div class="sub-header">👁️ Live Preview (Preview Mode)</div>', unsafe_allow_html=True)
-            
-            st.markdown("""
-            **Preview Mode is optimized for smooth, real-time adjustments at 1280x720 @ 60fps.**
-            
-            Use the live preview below to:
-            - Adjust focus and see changes immediately
-            - Fine-tune exposure and brightness
-            - Frame your shot perfectly
-            
-            Once you're satisfied with the settings, switch to **Scan Mode** to capture high-quality images.
-            """)
-        else:
-            st.markdown('<div class="sub-header">👁️ Single Frame Preview (Scan Mode)</div>', unsafe_allow_html=True)
-            
-            st.markdown("""
-            **Scan Mode is optimized for high-quality capture.**
-            
-            - Use single frame capture to verify framing
-            - Your settings from Preview Mode are preserved
-            - Click "Capture Photo" below for high-quality scan
-            """)
-        
-        # Initialize preview state
-        if 'live_preview_active' not in st.session_state:
-            st.session_state.live_preview_active = False
-        
-        col_prev_ctrl, col_prev_status = st.columns([1, 3])
-        
-        with col_prev_ctrl:
-            if st.session_state.camera_mode == 'preview':
-                # Preview mode: smooth continuous preview at 60fps
-                if st.button("▶️ Start Live Preview" if not st.session_state.live_preview_active else "⏸️ Stop Live Preview"):
-                    st.session_state.live_preview_active = not st.session_state.live_preview_active
-                    st.rerun()
-            else:
-                # Scan mode: single frame capture only
-                if st.button("📸 Capture Single Frame", help="Preview one frame before high-quality scan"):
-                    st.session_state.capture_single_frame = True
-        
-        with col_prev_status:
-            if st.session_state.camera_mode == 'preview':
-                if st.session_state.live_preview_active:
-                    st.success("🔴 **Live preview active at 1280x720 @ 60fps** - Adjust all settings and see results in real-time")
-                else:
-                    st.info("⚪ Click 'Start Live Preview' for smooth 60fps real-time preview")
-            else:
-                st.info("📸 **Scan Mode** - Use single frame preview to verify, then capture high-quality image below")
-        
-        # Preview display area
-        preview_placeholder = st.empty()
-        
-        # Fixed refresh rate for optimal 60fps preview performance
-        if 'preview_refresh_rate' not in st.session_state:
-            st.session_state.preview_refresh_rate = 0.001  # Minimal delay to maximize FPS (targeting 60fps)
-        
-        # Live preview loop
-        if st.session_state.live_preview_active:
-            frame = st.session_state.camera.capture_frame()
-            if frame is not None:
-                # Convert BGR to RGB for display
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                
-                # Calculate sharpness for focus feedback
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                sharpness = cv2.Laplacian(gray, cv2.CV_64F).var()
-                
-                preview_placeholder.image(
-                    frame_rgb, 
-                    caption=f"Live Preview @ 60fps - Sharpness: {sharpness:.2f} (higher is sharper)",
-                    use_container_width=True
-                )
-                
-                # Minimal refresh delay to maximize FPS (actual FPS depends on frame capture and processing time)
-                time.sleep(st.session_state.preview_refresh_rate)
-                st.rerun()
-            else:
-                st.error("Failed to capture frame from camera")
-                st.session_state.live_preview_active = False
-        elif st.session_state.get('capture_single_frame', False):
-            # Capture and display single frame
-            frame = st.session_state.camera.capture_frame()
-            if frame is not None:
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                
-                # Calculate sharpness
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                sharpness = cv2.Laplacian(gray, cv2.CV_64F).var()
-                
-                preview_placeholder.image(
-                    frame_rgb, 
-                    caption=f"Single Frame - Sharpness: {sharpness:.2f}",
-                    use_container_width=True
-                )
-            st.session_state.capture_single_frame = False
-        
-        st.markdown("---")
-        
-        # Focus Control Section - Now below the preview
-        st.markdown('<div class="sub-header">🎯 Focus Control</div>', unsafe_allow_html=True)
-        
-        st.markdown("""
-        Adjust the camera focus manually using the slider below, or use auto-focus to automatically 
-        find the optimal focus value. **Tip:** Enable live preview above to see focus changes in real-time!
-        """)
-        
-        col_focus1, col_focus2 = st.columns([3, 1])
-        
-        with col_focus1:
-            # Focus slider
-            current_focus = st.session_state.camera.get_focus()
-            if current_focus is None:
-                current_focus = 0
-            
-            focus_value = st.slider("Focus Value", min_value=0, max_value=1023, 
-                                    value=int(current_focus), step=1,
-                                    help="Adjust the motorized focus (0 = near, 1023 = far) - Arducam 108MP range")
-            
-            # Auto-apply focus when slider changes
-            if focus_value != int(current_focus):
-                st.session_state.camera.set_focus(focus_value)
-                if not st.session_state.live_preview_active:
-                    st.info(f"Focus set to {focus_value}. Enable live preview to see the effect in real-time!")
-        
-        with col_focus2:
-            st.markdown("**Auto Focus**")
-            if st.button("🔍 Auto Focus Scan"):
-                with st.spinner("Scanning for optimal focus... This may take 15-30 seconds"):
-                    # Temporarily disable live preview during auto-focus
-                    was_live = st.session_state.live_preview_active
-                    st.session_state.live_preview_active = False
-                    
-                    # Perform auto-focus
-                    best_focus, sharpness = st.session_state.camera.auto_focus_scan(
-                        start=0, end=1023, step=50
-                    )
-                    
-                    st.success(f"✅ Optimal focus: {best_focus} (sharpness: {sharpness:.2f})")
-                    
-                    # Restore live preview state
-                    st.session_state.live_preview_active = was_live
-                    
-                    # Trigger a rerun to update the slider
-                    st.rerun()
-            
-            st.markdown("**Focus Presets**")
-            col_near, col_mid, col_far = st.columns(3)
-            with col_near:
-                if st.button("📍 Near", help="Focus for close objects (~10cm)"):
-                    st.session_state.camera.set_focus(200)
-                    st.rerun()
-            with col_mid:
-                if st.button("📍 Mid", help="Focus for medium distance (~20cm)"):
-                    st.session_state.camera.set_focus(500)
-                    st.rerun()
-            with col_far:
-                if st.button("📍 Far", help="Focus for distant objects (~30cm+)"):
-                    st.session_state.camera.set_focus(800)
-                    st.rerun()
-        
-        st.markdown("---")
-        
-        # Image Quality Controls Section
-        st.markdown('<div class="sub-header">🎨 Image Quality Controls</div>', unsafe_allow_html=True)
-        
-        st.markdown("""
-        Adjust exposure, brightness, contrast, and other image parameters to optimize image quality.
-        **Tip:** Enable auto-exposure for automatic brightness adjustment, or use manual controls for precise tuning.
-        """)
-        
-        # Auto-exposure toggle
-        col_auto_exp, col_manual = st.columns([1, 3])
-        
-        with col_auto_exp:
-            current_auto_exp = st.session_state.get('auto_exposure_enabled', True)
-            auto_exp = st.checkbox("🔆 Auto Exposure", value=current_auto_exp, 
-                                   help="Enable automatic exposure adjustment")
-            
-            if auto_exp != current_auto_exp:
-                st.session_state.auto_exposure_enabled = auto_exp
-                st.session_state.camera.set_auto_exposure(auto_exp)
-                st.rerun()
-        
-        # Manual controls (only shown when auto-exposure is disabled)
-        if not st.session_state.get('auto_exposure_enabled', True):
-            with col_manual:
-                st.info("Auto-exposure is disabled. Use manual controls below.")
-            
-            # Get current values
-            current_exposure = st.session_state.camera.get_exposure()
-            current_gain = st.session_state.camera.get_gain()
-            
-            if current_exposure is None:
-                current_exposure = -5
-            if current_gain is None:
-                current_gain = 0
-            
-            col_exp, col_gain = st.columns(2)
-            
-            with col_exp:
-                # Exposure slider (typically negative values for manual mode)
-                exposure_value = st.slider("Exposure", min_value=-13, max_value=-1, 
-                                          value=int(current_exposure), step=1,
-                                          help="Adjust exposure time (higher = brighter but slower)")
-                
-                if exposure_value != int(current_exposure):
-                    st.session_state.camera.set_exposure(exposure_value)
-                    if not st.session_state.live_preview_active:
-                        st.info(f"Exposure set to {exposure_value}. Enable live preview to see the effect!")
-            
-            with col_gain:
-                # Gain slider
-                gain_value = st.slider("Gain (ISO)", min_value=0, max_value=100, 
-                                      value=int(current_gain), step=1,
-                                      help="Adjust sensor gain/amplification (higher = brighter but more noise)")
-                
-                if gain_value != int(current_gain):
-                    st.session_state.camera.set_gain(gain_value)
-                    if not st.session_state.live_preview_active:
-                        st.info(f"Gain set to {gain_value}. Enable live preview to see the effect!")
-        else:
-            with col_manual:
-                st.success("Auto-exposure is enabled. Camera will automatically adjust brightness.")
-        
-        # Brightness, Contrast, Saturation controls (always available)
-        st.markdown("**Additional Controls**")
-        
-        info = st.session_state.camera.get_camera_info()
-        current_brightness = info.get('brightness', 128)
-        current_contrast = info.get('contrast', 128)
-        current_saturation = info.get('saturation', 128)
-        
-        col_bright, col_contr, col_satur = st.columns(3)
-        
-        with col_bright:
-            brightness_value = st.slider("Brightness", min_value=0, max_value=255, 
-                                        value=int(current_brightness), step=1,
-                                        help="Adjust overall brightness")
-            
-            if brightness_value != int(current_brightness):
-                st.session_state.camera.set_brightness(brightness_value)
-        
-        with col_contr:
-            contrast_value = st.slider("Contrast", min_value=0, max_value=255, 
-                                      value=int(current_contrast), step=1,
-                                      help="Adjust contrast (difference between light and dark)")
-            
-            if contrast_value != int(current_contrast):
-                st.session_state.camera.set_contrast(contrast_value)
-        
-        with col_satur:
-            saturation_value = st.slider("Saturation", min_value=0, max_value=255, 
-                                        value=int(current_saturation), step=1,
-                                        help="Adjust color saturation/intensity")
-            
-            if saturation_value != int(current_saturation):
-                st.session_state.camera.set_saturation(saturation_value)
-        
-        st.markdown("---")
-        
-        # Photo Capture Section
-        if st.session_state.camera_mode == 'preview':
-            st.markdown('<div class="sub-header">📸 Quick Capture (Preview Quality)</div>', unsafe_allow_html=True)
-            st.info("💡 **Tip:** For high-quality scans, switch to **Scan Mode** above after adjusting all settings.")
-        else:
-            st.markdown('<div class="sub-header">📸 High-Quality Scan Capture</div>', unsafe_allow_html=True)
-            st.success("✅ **Scan Mode Active** - Capturing at high quality!")
-        
-        col_cap1, col_cap2 = st.columns([2, 1])
-        
-        with col_cap1:
-            quality = st.slider("JPEG Quality", min_value=50, max_value=100, value=95, step=5,
-                               help="JPEG compression quality (higher = better quality, larger file)")
-            
-            custom_path = st.text_input("Custom Save Path (optional)", 
-                                       placeholder="Leave empty for auto-generated path")
-        
-        with col_cap2:
-            st.markdown("**Actions**")
-            
-            button_label = "📸 Capture Photo" if st.session_state.camera_mode == 'preview' else "📸 Capture High-Quality Scan"
-            if st.button(button_label, type="primary"):
-                with st.spinner(f"Capturing {'photo' if st.session_state.camera_mode == 'preview' else 'high-quality scan'}..."):
-                    output_path = custom_path if custom_path else None
-                    saved_path = st.session_state.camera.capture_photo(
-                        output_path=output_path,
-                        quality=quality
-                    )
-                    
-                    if saved_path:
-                        resolution_info = f"{st.session_state.camera.get_camera_info()['width']}x{st.session_state.camera.get_camera_info()['height']}"
-                        st.success(f"{'Photo' if st.session_state.camera_mode == 'preview' else 'High-quality scan'} saved ({resolution_info}): {saved_path}")
-                        
-                        # Store in session state for processing
-                        st.session_state.last_captured_photo = saved_path
-                        
-                        # Log capture to database if DB is available
-                        if st.session_state.get('db_connected', False) and 'db' in st.session_state:
-                            try:
-                                camera_info = st.session_state.camera.get_camera_info()
-                                file_size = Path(saved_path).stat().st_size if Path(saved_path).exists() else None
-                                
-                                capture_id = st.session_state.db.log_camera_capture(
-                                    file_name=Path(saved_path).name,
-                                    file_path=saved_path,
-                                    camera_mode=st.session_state.camera_mode,
-                                    resolution_width=camera_info.get('width'),
-                                    resolution_height=camera_info.get('height'),
-                                    fps=camera_info.get('fps'),
-                                    focus_value=camera_info.get('focus'),
-                                    exposure_value=camera_info.get('exposure'),
-                                    brightness=camera_info.get('brightness'),
-                                    contrast=camera_info.get('contrast'),
-                                    saturation=camera_info.get('saturation'),
-                                    jpeg_quality=quality,
-                                    file_size_bytes=file_size
-                                )
-                                st.success(f"✅ Capture logged to database (ID: {capture_id})")
-                            except Exception as e:
-                                st.warning(f"Photo saved but database logging failed: {e}")
-                        
-                        # Display the captured photo
-                        try:
-                            img = Image.open(saved_path)
-                            st.image(img, caption=f"Captured: {Path(saved_path).name}", 
-                                   use_container_width=True)
-                        except Exception as e:
-                            st.warning(f"Could not display image: {e}")
-                    else:
-                        st.error("Failed to capture photo")
-        
-        # Process Captured Photo Section
-        if 'last_captured_photo' in st.session_state:
-            st.markdown("---")
-            st.markdown('<div class="sub-header">🔄 Process Captured Photo</div>', unsafe_allow_html=True)
-            
-            st.info(f"**Last captured photo:** {st.session_state.last_captured_photo}")
-            
-            col_proc1, col_proc2 = st.columns([2, 1])
-            
-            with col_proc1:
-                st.markdown("""
-                Process the captured photo through the nuts_vision pipeline to detect components
-                and extract manufacturer part numbers.
-                """)
-            
-            with col_proc2:
-                if st.button("🔄 Process Image", type="primary"):
-                    # Check if model exists
-                    default_model_path = "runs/detect/component_detector/weights/best.pt"
-                    
-                    if not Path(default_model_path).exists():
-                        st.error("Model not found. Please train a model first.")
-                    else:
-                        with st.spinner("Processing image through pipeline..."):
-                            try:
-                                # Import pipeline
-                                from pipeline import ComponentAnalysisPipeline
-                                
-                                # Initialize pipeline
-                                use_db = st.session_state.get('db_connected', False)
-                                pipeline = ComponentAnalysisPipeline(
-                                    model_path=default_model_path,
-                                    use_database=use_db
-                                )
-                                
-                                # Process the image
-                                results = pipeline.process_image(st.session_state.last_captured_photo)
-                                
-                                st.success("✅ Image processed successfully!")
-                                
-                                # Display results
-                                if results:
-                                    st.markdown("**Results:**")
-                                    st.json(results)
-                                    
-                                    # Link to Job Viewer
-                                    st.info("📊 View detailed results in the **Job Viewer** page")
-                                
-                            except Exception as e:
-                                st.error(f"Error processing image: {e}")
-                                import traceback
-                                st.code(traceback.format_exc())
-    
-    else:
-        st.info("👆 Please connect to the camera first to access controls and capture photos.")
+    ### \U0001f527 Electronic Component Detection System
 
+    **nuts_vision** analyses photos of electronic circuit boards, detects components,
+    and produces cropped images of each detected component.
 
-# ========== ABOUT PAGE ==========
-elif page == "ℹ️ About":
-    st.markdown('<div class="main-header">ℹ️ About nuts_vision</div>', unsafe_allow_html=True)
-    
-    st.markdown("""
-    ### 🔧 Electronic Component Detection & OCR System
-    
-    **nuts_vision** is an automated computer vision system designed to analyze electronic circuit boards,
-    detect components, and extract manufacturer part numbers.
-    
-    #### 🎯 Key Technologies:
-    
-    - **YOLOv8**: State-of-the-art object detection for component identification
-    - **Tesseract OCR**: Text extraction from IC components
-    - **PostgreSQL**: Complete tracing and logging of all operations
-    - **Streamlit**: Modern, interactive web interface
-    - **OpenCV**: Advanced image processing and manipulation
-    
-    #### 📊 Database Schema:
-    
-    - `images_input`: Uploaded images tracking
-    - `log_jobs`: Detection job execution logs
-    - `detections`: Component detection results with bounding boxes
-    - `ics_cropped`: Cropped IC images for OCR processing
-    - `ics_ocr`: OCR results with extracted MPNs
-    
-    #### 🚀 Workflow:
-    
-    1. **Upload**: Upload PCB images through the web interface
-    2. **Detection**: YOLO model detects and classifies components
-    3. **Cropping**: Detected ICs are cropped for OCR processing
-    4. **OCR**: Tesseract extracts manufacturer part numbers
-    5. **Database**: All results are logged to PostgreSQL
-    6. **Visualization**: View results and statistics
-    
-    #### 📖 Documentation:
-    
-    - [README.md](README.md) - English documentation
-    - [README_FR.md](README_FR.md) - French documentation
-    - [DATABASE.md](DATABASE.md) - Database setup guide
-    - [ARCHITECTURE.md](ARCHITECTURE.md) - System architecture
-    
-    #### 🤝 Contributing:
-    
-    Contributions are welcome! Please check the GitHub repository for more information.
-    
-    ---
-    
-    **Version**: 1.0.0  
-    **License**: CC BY 4.0  
-    **Repository**: [github.com/MJOpeanuts/nuts_vision](https://github.com/MJOpeanuts/nuts_vision)
+    #### \U0001f3af Key Technologies:
+    - **YOLOv8**: object detection
+    - **PostgreSQL** *(optional)*: logging
+    - **Streamlit**: web interface
+    - **OpenCV**: image processing
+
+    #### \U0001f4c1 Job Folder Structure:
+    ```
+    jobs/
+      <image_name>_<YYYYMMDD>_<HHMMSS>/
+        input.<ext>    — original photo
+        result.jpg     — annotated photo
+        crops/         — one image per component
+        metadata.json  — detection data
+    ```
+
+    **Version**: 2.0.0 | **License**: CC BY 4.0
     """)
-    
-    # System information
+
     st.markdown("---")
-    st.markdown("### 💻 System Information")
-    
     col1, col2 = st.columns(2)
-    
     with col1:
         st.markdown("**Database Status:**")
-        if st.session_state.get('db_connected', False):
-            st.success("✅ Connected")
+        if st.session_state.get("db_connected", False):
+            st.success("\u2705 Connected")
             st.text(f"Host: {os.getenv('DB_HOST', 'localhost')}")
             st.text(f"Port: {os.getenv('DB_PORT', '5432')}")
             st.text(f"Database: {os.getenv('DB_NAME', 'nuts_vision')}")
         else:
-            st.error("❌ Not Connected")
-    
+            st.error("\u274c Not Connected")
     with col2:
         st.markdown("**Environment:**")
         st.text(f"Python: {sys.version.split()[0]}")
         st.text(f"Streamlit: {st.__version__}")
-        
-        # Check for model
         default_model = Path("runs/detect/component_detector/weights/best.pt")
-        if default_model.exists():
-            st.text("Model: ✅ Found")
-        else:
-            st.text("Model: ❌ Not trained")
+        st.text("Model: \u2705 Found" if default_model.exists() else "Model: \u274c Not trained")

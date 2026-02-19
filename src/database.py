@@ -87,7 +87,9 @@ class DatabaseManager:
     def start_job(
         self,
         image_id: int,
-        model: str
+        model: str,
+        job_name: str = None,
+        job_folder_path: str = None
     ) -> int:
         """
         Start a detection job.
@@ -95,6 +97,8 @@ class DatabaseManager:
         Args:
             image_id: ID of the image being processed
             model: Model name/path used for detection
+            job_name: Human-readable job name (input_filename_date_time)
+            job_folder_path: Path to the job output folder
             
         Returns:
             job_id of the created job
@@ -103,11 +107,11 @@ class DatabaseManager:
             with conn.cursor() as cursor:
                 cursor.execute(
                     """
-                    INSERT INTO log_jobs (image_id, model)
-                    VALUES (%s, %s)
+                    INSERT INTO log_jobs (image_id, model, job_name, job_folder_path)
+                    VALUES (%s, %s, %s, %s)
                     RETURNING job_id
                     """,
-                    (image_id, model)
+                    (image_id, model, job_name, job_folder_path)
                 )
                 job_id = cursor.fetchone()[0]
                 return job_id
@@ -163,14 +167,14 @@ class DatabaseManager:
                 detection_id = cursor.fetchone()[0]
                 return detection_id
     
-    def log_cropped_ic(
+    def log_cropped_component(
         self,
         job_id: int,
         detection_id: int,
         cropped_file_path: str
     ) -> int:
         """
-        Log a cropped IC image.
+        Log a cropped component image.
         
         Args:
             job_id: ID of the job
@@ -193,43 +197,6 @@ class DatabaseManager:
                 cropped_id = cursor.fetchone()[0]
                 return cropped_id
     
-    def log_ocr_result(
-        self,
-        job_id: int,
-        cropped_id: int,
-        raw_text: str,
-        cleaned_mpn: str,
-        rotation_angle: int,
-        confidence: float = None
-    ) -> int:
-        """
-        Log an OCR result.
-        
-        Args:
-            job_id: ID of the job
-            cropped_id: ID of the cropped IC
-            raw_text: Raw OCR text
-            cleaned_mpn: Cleaned MPN
-            rotation_angle: Angle at which OCR was performed (0, 90, 180, 270)
-            confidence: OCR confidence score
-            
-        Returns:
-            ocr_id of the inserted record
-        """
-        with self.get_connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    """
-                    INSERT INTO ics_ocr 
-                    (job_id, cropped_id, raw_text, cleaned_mpn, rotation_angle, confidence)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                    RETURNING ocr_id
-                    """,
-                    (job_id, cropped_id, raw_text, cleaned_mpn, rotation_angle, confidence)
-                )
-                ocr_id = cursor.fetchone()[0]
-                return ocr_id
-    
     def get_job_statistics(self, job_id: int) -> Dict[str, Any]:
         """
         Get statistics for a specific job.
@@ -242,7 +209,6 @@ class DatabaseManager:
         """
         with self.get_connection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                # Get job info
                 cursor.execute(
                     """
                     SELECT 
@@ -250,13 +216,11 @@ class DatabaseManager:
                         i.file_name,
                         i.file_path,
                         COUNT(DISTINCT d.detection_id) as total_detections,
-                        COUNT(DISTINCT ic.cropped_id) as total_ics_cropped,
-                        COUNT(DISTINCT o.ocr_id) as total_ocr_results
+                        COUNT(DISTINCT ic.cropped_id) as total_crops
                     FROM log_jobs j
                     JOIN images_input i ON j.image_id = i.image_id
                     LEFT JOIN detections d ON j.job_id = d.job_id
                     LEFT JOIN ics_cropped ic ON j.job_id = ic.job_id
-                    LEFT JOIN ics_ocr o ON j.job_id = o.job_id
                     WHERE j.job_id = %s
                     GROUP BY j.job_id, i.file_name, i.file_path
                     """,
@@ -368,52 +332,6 @@ class DatabaseManager:
                     )
                 return [dict(row) for row in cursor.fetchall()]
     
-    def get_all_ocr_results(self, job_id: int = None, limit: int = 100) -> List[Dict[str, Any]]:
-        """
-        Get all OCR results, optionally filtered by job.
-        
-        Args:
-            job_id: Optional job ID to filter by
-            limit: Maximum number of records to return
-            
-        Returns:
-            List of OCR records with cropped image paths
-        """
-        with self.get_connection() as conn:
-            with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                if job_id:
-                    cursor.execute(
-                        """
-                        SELECT 
-                            o.*,
-                            ic.cropped_file_path,
-                            d.class_name
-                        FROM ics_ocr o
-                        JOIN ics_cropped ic ON o.cropped_id = ic.cropped_id
-                        JOIN detections d ON ic.detection_id = d.detection_id
-                        WHERE o.job_id = %s
-                        ORDER BY o.processed_at DESC
-                        LIMIT %s
-                        """,
-                        (job_id, limit)
-                    )
-                else:
-                    cursor.execute(
-                        """
-                        SELECT 
-                            o.*,
-                            ic.cropped_file_path,
-                            d.class_name
-                        FROM ics_ocr o
-                        JOIN ics_cropped ic ON o.cropped_id = ic.cropped_id
-                        JOIN detections d ON ic.detection_id = d.detection_id
-                        ORDER BY o.processed_at DESC
-                        LIMIT %s
-                        """,
-                        (limit,)
-                    )
-                return [dict(row) for row in cursor.fetchall()]
-    
     def get_detection_statistics(self) -> Dict[str, Any]:
         """
         Get overall detection statistics.
@@ -428,13 +346,10 @@ class DatabaseManager:
                     SELECT 
                         COUNT(DISTINCT i.image_id) as total_images,
                         COUNT(DISTINCT j.job_id) as total_jobs,
-                        COUNT(DISTINCT d.detection_id) as total_detections,
-                        COUNT(DISTINCT o.ocr_id) as total_ocr_results,
-                        COUNT(DISTINCT CASE WHEN o.cleaned_mpn IS NOT NULL AND o.cleaned_mpn != '' THEN o.ocr_id END) as successful_mpn_extractions
+                        COUNT(DISTINCT d.detection_id) as total_detections
                     FROM images_input i
                     LEFT JOIN log_jobs j ON i.image_id = j.image_id
                     LEFT JOIN detections d ON j.job_id = d.job_id
-                    LEFT JOIN ics_ocr o ON j.job_id = o.job_id
                     """
                 )
                 stats = cursor.fetchone()
@@ -453,120 +368,6 @@ class DatabaseManager:
                 result = dict(stats) if stats else {}
                 result['component_counts'] = component_counts
                 return result
-    
-    def log_camera_capture(
-        self,
-        file_name: str,
-        file_path: str,
-        camera_mode: str,
-        resolution_width: int,
-        resolution_height: int,
-        fps: int,
-        focus_value: int = None,
-        exposure_value: int = None,
-        brightness: int = None,
-        contrast: int = None,
-        saturation: int = None,
-        jpeg_quality: int = None,
-        file_size_bytes: int = None,
-        notes: str = None
-    ) -> int:
-        """
-        Log a camera capture to the database.
-        
-        Args:
-            file_name: Name of the captured file
-            file_path: Full path to the captured file
-            camera_mode: Camera mode ('preview' or 'scan')
-            resolution_width: Width of the captured image
-            resolution_height: Height of the captured image
-            fps: Frames per second setting
-            focus_value: Focus value (0-1023)
-            exposure_value: Exposure value
-            brightness: Brightness value (0-255)
-            contrast: Contrast value (0-255)
-            saturation: Saturation value (0-255)
-            jpeg_quality: JPEG quality (0-100)
-            file_size_bytes: File size in bytes
-            notes: Optional notes about the capture
-            
-        Returns:
-            capture_id of the inserted record
-        """
-        with self.get_connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    """
-                    INSERT INTO camera_captures 
-                    (file_name, file_path, camera_mode, resolution_width, resolution_height,
-                     fps, focus_value, exposure_value, brightness, contrast, saturation,
-                     jpeg_quality, file_size_bytes, notes)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    RETURNING capture_id
-                    """,
-                    (file_name, file_path, camera_mode, resolution_width, resolution_height,
-                     fps, focus_value, exposure_value, brightness, contrast, saturation,
-                     jpeg_quality, file_size_bytes, notes)
-                )
-                capture_id = cursor.fetchone()[0]
-                return capture_id
-    
-    def get_all_camera_captures(self, limit: int = 100, camera_mode: str = None) -> List[Dict[str, Any]]:
-        """
-        Get all camera captures, optionally filtered by mode.
-        
-        Args:
-            limit: Maximum number of records to return
-            camera_mode: Optional camera mode filter ('preview' or 'scan')
-            
-        Returns:
-            List of camera capture records
-        """
-        with self.get_connection() as conn:
-            with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                if camera_mode:
-                    cursor.execute(
-                        """
-                        SELECT * FROM camera_captures
-                        WHERE camera_mode = %s
-                        ORDER BY captured_at DESC
-                        LIMIT %s
-                        """,
-                        (camera_mode, limit)
-                    )
-                else:
-                    cursor.execute(
-                        """
-                        SELECT * FROM camera_captures
-                        ORDER BY captured_at DESC
-                        LIMIT %s
-                        """,
-                        (limit,)
-                    )
-                return [dict(row) for row in cursor.fetchall()]
-    
-    def get_camera_capture_statistics(self) -> Dict[str, Any]:
-        """
-        Get statistics about camera captures.
-        
-        Returns:
-            Dictionary with capture statistics
-        """
-        with self.get_connection() as conn:
-            with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                cursor.execute(
-                    """
-                    SELECT 
-                        COUNT(*) as total_captures,
-                        COUNT(CASE WHEN camera_mode = 'preview' THEN 1 END) as preview_captures,
-                        COUNT(CASE WHEN camera_mode = 'scan' THEN 1 END) as scan_captures,
-                        AVG(file_size_bytes) as avg_file_size,
-                        MAX(captured_at) as last_capture_time
-                    FROM camera_captures
-                    """
-                )
-                stats = cursor.fetchone()
-                return dict(stats) if stats else {}
 
 
 def get_db_manager_from_env() -> DatabaseManager:
