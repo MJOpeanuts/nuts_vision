@@ -121,16 +121,19 @@ class ComponentAnalysisPipeline:
         cv2.imwrite(str(result_path), annotated)
         print(f"  Saved result image: {result_path}")
 
-        # --- Crop all detected components ---
-        print("\n[STEP 2/2] Cropping components...")
+        # --- Crop only IC components ---
+        print("\n[STEP 2/2] Cropping IC components...")
         crop_paths = []
+        crop_path_by_index = {}
         for i, detection in enumerate(detections):
-            cropped = self.cropper.crop_component(image, detection['bbox'])
-            crop_filename = f"{i:03d}_{detection['class_name']}.jpg"
-            crop_path = crops_dir / crop_filename
-            cv2.imwrite(str(crop_path), cropped)
-            crop_paths.append(str(crop_path))
-        print(f"  Saved {len(crop_paths)} cropped components to {crops_dir}")
+            if detection['class_name'] == 'IC':
+                cropped = self.cropper.crop_component(image, detection['bbox'])
+                crop_filename = f"{i:03d}_{detection['class_name']}.jpg"
+                crop_path = crops_dir / crop_filename
+                cv2.imwrite(str(crop_path), cropped)
+                crop_paths.append(str(crop_path))
+                crop_path_by_index[i] = str(crop_path)
+        print(f"  Saved {len(crop_paths)} IC crops to {crops_dir}")
 
         # --- Save metadata JSON ---
         metadata = {
@@ -145,7 +148,7 @@ class ComponentAnalysisPipeline:
                     "class_name": d["class_name"],
                     "confidence": round(d["confidence"], 4),
                     "bbox": d["bbox"],
-                    "crop_file": Path(crop_paths[i]).name if i < len(crop_paths) else None
+                    "crop_file": Path(crop_path_by_index[i]).name if i in crop_path_by_index else None
                 }
                 for i, d in enumerate(detections)
             ]
@@ -169,7 +172,7 @@ class ComponentAnalysisPipeline:
                 for i, d in enumerate(detections):
                     det_id = self.db.log_detection(job_id, d["class_name"], d["confidence"], d["bbox"])
                     detection_ids[i] = det_id
-                for i, crop_path in enumerate(crop_paths):
+                for i, crop_path in crop_path_by_index.items():
                     if i in detection_ids:
                         self.db.log_cropped_component(job_id, detection_ids[i], str(Path(crop_path).resolve()))
                 self.db.end_job(job_id)
