@@ -373,17 +373,28 @@ class DatabaseManager:
 def get_db_manager_from_env() -> DatabaseManager:
     """
     Create a DatabaseManager using environment variables.
-    
+
+    Loads configuration from a .env file if present (using python-dotenv).
+    If no .env file is found, falls back to environment variables or defaults
+    and prints a notice.
+
     Environment variables:
         DB_HOST: Database host (default: localhost)
         DB_PORT: Database port (default: 5432)
         DB_NAME: Database name (default: nuts_vision)
         DB_USER: Database user (default: nuts_user)
         DB_PASSWORD: Database password (default: nuts_password)
-    
+
     Returns:
         DatabaseManager instance
     """
+    from dotenv import load_dotenv, find_dotenv
+    env_file = find_dotenv(usecwd=True)
+    if env_file:
+        load_dotenv(env_file)
+    else:
+        print("No .env file found, using defaults")
+
     return DatabaseManager(
         host=os.getenv('DB_HOST', 'localhost'),
         port=int(os.getenv('DB_PORT', '5432')),
