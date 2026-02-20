@@ -32,7 +32,7 @@ except ImportError as e:
 
 # Page configuration
 st.set_page_config(
-    page_title="nuts_vision - Electronic Component Analyzer",
+    page_title="nuts_vision - IC Detector",
     page_icon="\U0001f527",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -100,27 +100,19 @@ else:
 # ========== HOME PAGE ==========
 if page == "\U0001f3e0 Home":
     st.markdown('<div class="main-header">\U0001f527 nuts_vision</div>', unsafe_allow_html=True)
-    st.markdown("### Electronic Component Detection System")
+    st.markdown("### IC Detection System")
     st.markdown("""
-    Welcome to **nuts_vision** — an automated system for analyzing electronic circuit boards.
+    Welcome to **nuts_vision** — an automated system for detecting integrated circuits (ICs) on electronic circuit boards.
 
     #### \U0001f3af How it works:
     1. **Upload** a photo of an electronic circuit board
-    2. **Detect** — YOLOv8 identifies and classifies every component
-    3. **Crop** — each detected component is saved as a separate image
+    2. **Detect** — YOLOv8 identifies every IC on the board
+    3. **Crop** — each detected IC is saved as a separate image
     4. **Browse** — all results are organized in a per-job folder
 
-    #### \U0001f4cb Detectable Components:
+    #### \U0001f4cb Detected component:
     """)
-    components = [
-        "IC (Integrated Circuit)", "LED", "Battery", "Buzzer",
-        "Capacitor", "Clock", "Connector", "Diode",
-        "Display", "Fuse", "Inductor", "Potentiometer",
-        "Relay", "Resistor", "Switch", "Transistor"
-    ]
-    cols = st.columns(4)
-    for idx, comp in enumerate(components):
-        cols[idx % 4].markdown(f"\u2713 {comp}")
+    st.markdown("\u2713 IC (Integrated Circuit)")
 
     st.markdown("---")
     st.markdown("""
@@ -155,17 +147,13 @@ if page == "\U0001f3e0 Home":
 elif page == "\U0001f4e4 Upload & Process":
     st.markdown('<div class="main-header">\U0001f4e4 Upload & Process Images</div>', unsafe_allow_html=True)
 
-    default_model_path = "runs/detect/component_detector/weights/best.pt"
+    default_model_path = "best.pt"
     model_exists = Path(default_model_path).exists()
 
     if not model_exists:
         st.warning("""
         \u26a0\ufe0f **Model not found!**
-        Train a model first:
-        ```bash
-        python src/train.py --data data.yaml --epochs 100 --model-size n
-        ```
-        Or specify a custom model path below.
+        Make sure `best.pt` is present in the project root directory.
         """)
 
     st.markdown("### Model Configuration")
@@ -522,11 +510,11 @@ elif page == "\u2139\ufe0f About":
     st.markdown("""
     ### \U0001f527 Electronic Component Detection System
 
-    **nuts_vision** analyses photos of electronic circuit boards, detects components,
-    and produces cropped images of each detected component.
+    **nuts_vision** analyses photos of electronic circuit boards, detects integrated circuits (ICs),
+    and produces cropped images of each detected IC.
 
     #### \U0001f3af Key Technologies:
-    - **YOLOv8**: object detection
+    - **YOLOv8**: IC detection (trained model: `best.pt`)
     - **PostgreSQL** *(optional)*: logging
     - **Streamlit**: web interface
     - **OpenCV**: image processing
@@ -541,7 +529,7 @@ elif page == "\u2139\ufe0f About":
         metadata.json  — detection data
     ```
 
-    **Version**: 2.0.0 | **License**: CC BY 4.0
+    **Version**: 2.1.0 | **License**: CC BY 4.0
     """)
 
     st.markdown("---")
@@ -559,5 +547,5 @@ elif page == "\u2139\ufe0f About":
         st.markdown("**Environment:**")
         st.text(f"Python: {sys.version.split()[0]}")
         st.text(f"Streamlit: {st.__version__}")
-        default_model = Path("runs/detect/component_detector/weights/best.pt")
-        st.text("Model: \u2705 Found" if default_model.exists() else "Model: \u274c Not trained")
+        default_model = Path("best.pt")
+        st.text("Model: \u2705 Found" if default_model.exists() else "Model: \u274c Not found (best.pt missing)")
