@@ -40,6 +40,20 @@ nuts_vision/
     └── init.sql            # Database schema
 ```
 
+### Auto-generated and dataset directories
+
+The following directories are **not tracked by git** (they are listed in `.gitignore`) and can be safely deleted at any time:
+
+| Directory | Origin | Can be deleted? |
+|-----------|--------|----------------|
+| `outputs/` | Created automatically when running the CLI scripts (`detect.py`, `crop.py`, `visualize.py`, `example.py`) to store results | ✅ Yes — recreated on next run |
+| `runs/` | Created automatically by YOLO/Ultralytics during training or inference | ✅ Yes — recreated by YOLO |
+| `train/` | YOLO training dataset (images + labels) | ✅ Yes — only needed to retrain the model |
+| `valid/` | YOLO validation dataset (images + labels) | ✅ Yes — only needed to retrain the model |
+| `test/` | YOLO test dataset (images + labels) | ✅ Yes — only needed to retrain the model |
+
+> **Note:** The web app (`app.py`) does not use `train/`, `valid/`, `test/`, or `runs/`. It stores its results in the `jobs/` folder instead.
+
 ### Job output structure
 
 Each processed image produces a job folder:
