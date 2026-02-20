@@ -20,5 +20,23 @@ services:
       timeout: 5s
       retries: 5
 
+  web:
+    build: .
+    container_name: nuts_vision_app
+    ports:
+      - "8501:8501"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: nuts_vision
+      DB_USER: nuts_user
+      DB_PASSWORD: nuts_password
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - ./jobs:/app/jobs
+
 volumes:
   postgres_data:

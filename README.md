@@ -111,23 +111,39 @@ python src/pipeline.py --model best.pt --image path/to/board.jpg --use-database
 
 The database is entirely optional. Without it, all results are still saved to the `jobs/` folder.
 
+### Full Docker deployment (app + database)
+
 ```bash
-# Start the database container
+# Start everything with Docker (app on port 8501 + PostgreSQL)
 docker-compose up -d
+```
+
+Open your browser at **http://localhost:8501**.
+
+The `web` service automatically sets `DB_HOST=postgres` so it connects to the database container.
+
+### Local app + Docker database
+
+```bash
+# Start only the database container
+docker-compose up -d postgres
 
 # Copy and edit the environment file
-cp .env.example .env   # adjust credentials if needed
+cp .env.example .env   # keep DB_HOST=localhost for local app
+
+# Launch the app locally
+streamlit run app.py
 ```
 
 The `.env` variables used:
 
-| Variable | Default |
-|----------|---------|
-| `DB_HOST` | `localhost` |
-| `DB_PORT` | `5432` |
-| `DB_NAME` | `nuts_vision` |
-| `DB_USER` | `nuts_user` |
-| `DB_PASSWORD` | `nuts_password` |
+| Variable | Default | Docker value |
+|----------|---------|-------------|
+| `DB_HOST` | `localhost` | `postgres` |
+| `DB_PORT` | `5432` | `5432` |
+| `DB_NAME` | `nuts_vision` | `nuts_vision` |
+| `DB_USER` | `nuts_user` | `nuts_user` |
+| `DB_PASSWORD` | `nuts_password` | `nuts_password` |
 
 ---
 
