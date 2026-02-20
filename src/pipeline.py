@@ -227,9 +227,9 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python pipeline.py --model models/best.pt --image board.jpg
-  python pipeline.py --model models/best.pt --image-dir images/
-  python pipeline.py --model models/best.pt --image board.jpg --conf 0.5
+  python pipeline.py --model best.pt --image board.jpg
+  python pipeline.py --model best.pt --image-dir images/
+  python pipeline.py --model best.pt --image board.jpg --conf 0.5
         """
     )
     parser.add_argument("--model", type=str, required=True, help="Path to trained YOLO model")

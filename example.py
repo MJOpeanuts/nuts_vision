@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Example/Demo Script for nuts_vision
-Demonstrates the usage of the component detection pipeline.
+Demonstrates the usage of the IC detection pipeline.
 """
 
 import sys
@@ -11,33 +11,31 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from detect import ComponentDetector
-from crop import ComponentCropper
-from visualize import DetectionVisualizer
+from pipeline import ComponentAnalysisPipeline
 
 
 def example_detection_only():
     """Example: Detection only."""
     print("="*60)
-    print("EXAMPLE 1: Component Detection Only")
+    print("EXAMPLE 1: IC Detection Only")
     print("="*60)
 
-    model_path = "models/best.pt"
+    model_path = "best.pt"
     if not Path(model_path).exists():
         print(f"\nError: Model not found at {model_path}")
-        print("Please train a model first:")
-        print("  python src/train.py --data data.yaml --epochs 100")
+        print("Please place best.pt in the project root directory.")
         return
 
     detector = ComponentDetector(model_path, conf_threshold=0.3)
 
-    print("\nDetecting components...")
+    print("\nDetecting ICs...")
     detections = detector.detect_components(
         "path/to/your/board_image.jpg",
         save_visualization=True,
         output_dir="outputs/results"
     )
 
-    print(f"\nDetected {len(detections)} components:")
+    print(f"\nDetected {len(detections)} ICs:")
     for i, det in enumerate(detections, 1):
         print(f"  {i}. {det['class_name']}: confidence={det['confidence']:.2f}")
 
@@ -48,10 +46,7 @@ def example_pipeline():
     print("EXAMPLE 2: Full Pipeline (Detection + Cropping)")
     print("="*60)
 
-    # Use the pipeline for the recommended workflow
-    from pipeline import ComponentAnalysisPipeline
-
-    model_path = "models/best.pt"
+    model_path = "best.pt"
     image_path = "path/to/your/board_image.jpg"
 
     if not Path(model_path).exists():
@@ -76,7 +71,7 @@ def example_batch_processing():
     print("EXAMPLE 3: Batch Processing Multiple Images")
     print("="*60)
 
-    model_path = "models/best.pt"
+    model_path = "best.pt"
     image_dir = "path/to/your/images/"
 
     if not Path(model_path).exists():
@@ -92,13 +87,13 @@ def example_batch_processing():
 
     total = sum(len(dets) for dets in all_detections.values())
     print(f"\nProcessed {len(all_detections)} images")
-    print(f"Total components detected: {total}")
+    print(f"Total ICs detected: {total}")
 
 
 def main():
     """Run all examples."""
     print("\n" + "="*60)
-    print("nuts_vision - Component Detection Examples")
+    print("nuts_vision - IC Detection Examples")
     print("="*60)
     print("\nThis script demonstrates the usage of nuts_vision.")
     print("\nIMPORTANT: Update the image paths in this script before running!")
@@ -116,10 +111,8 @@ def main():
     # example_batch_processing()
 
     print("\nTo get started:")
-    print("\n1. Train a model:")
-    print("   python src/train.py --data data.yaml --epochs 100")
-    print("\n2. Run the pipeline on your images:")
-    print("   python src/pipeline.py --model runs/detect/component_detector/weights/best.pt --image your_image.jpg")
+    print("\n1. Run the pipeline on your images:")
+    print("   python src/pipeline.py --model best.pt --image your_image.jpg")
     print()
 
 

@@ -53,8 +53,7 @@ def test_image(model_path: str, image_path: str, conf_threshold: float = 0.25):
     if not Path(model_path).exists():
         print(f"❌ Erreur: Modèle introuvable / Model not found: {model_path}")
         print()
-        print("💡 Entraînez d'abord le modèle / Train the model first:")
-        print("   python src/train.py --data data.yaml --epochs 50")
+        print("💡 Placez best.pt dans le répertoire racine du projet / Place best.pt in the project root directory.")
         return False
     
     if not Path(image_path).exists():
@@ -139,9 +138,9 @@ def test_image(model_path: str, image_path: str, conf_threshold: float = 0.25):
         print("   1. Ouvrez l'image annotée pour voir les détections")
         print("      Open the annotated image to see detections")
         print()
-        print("   2. Pour une analyse complète avec OCR:")
-        print("      For full analysis with OCR:")
-        print("      python src/pipeline.py --model", model_path, "--image", image_path)
+        print("   2. Pour une analyse complète avec le pipeline:")
+        print("      For full analysis with pipeline:")
+        print("      python src/pipeline.py --model best.pt --image", image_path)
         print()
         
         return True
@@ -160,8 +159,8 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Exemples / Examples:
-  # Test avec un modèle entraîné / Test with trained model
-  python test_simple.py --model runs/detect/component_detector/weights/best.pt --image ma_carte.jpg
+  # Test avec best.pt / Test with best.pt
+  python test_simple.py --model best.pt --image ma_carte.jpg
   
   # Avec seuil de confiance ajusté / With adjusted confidence threshold
   python test_simple.py --model best.pt --image photo.jpg --conf 0.3
