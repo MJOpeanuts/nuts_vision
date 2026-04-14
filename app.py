@@ -363,6 +363,15 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
 
     st.image(pil_image, caption=img_name, width="stretch")
 
+    # Job name input
+    default_job_name = Path(img_name).stem
+    job_name_input = st.text_input(
+        "Job name",
+        value=default_job_name,
+        help="Give this job a meaningful name. It will be used for the output folder.",
+        key="pb_job_name",
+    )
+
     # ------------------------------------------------------------------
     # STEP 2 — Model configuration & inference
     # ------------------------------------------------------------------
@@ -409,7 +418,7 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
     )
 
     run_inference = st.button("\U0001f50d Run Detection", type="primary",
-                              disabled=not _model_names)
+                              disabled=not _model_names or not comp_model_name)
 
     if run_inference:
         import uuid as _uuid
@@ -512,6 +521,10 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
                 "x2": round(d["bbox"][2], 1), "y2": round(d["bbox"][3], 1),
             })
 
+        if not rows:
+            st.info("No detections to display.")
+            st.stop()
+
         df_edit = pd.DataFrame(rows)
         edited_df = st.data_editor(
             df_edit,
@@ -541,9 +554,34 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
             import cv2
             cv_img = cv2.imdecode(np.frombuffer(img_bytes, np.uint8), cv2.IMREAD_COLOR)
 
-            crops_dir = Path("/tmp/pb_uploads/crops")
-            crops_dir.mkdir(parents=True, exist_ok=True)
+            # ---- Create job folder ----
+            now = datetime.now()
+            sanitized_job_name = "".join(
+                c if (c.isalnum() or c in "._-") else "_"
+                for c in (job_name_input or "photobooth").strip()
+            ).strip("._-") or "photobooth"
+            job_folder_name = f"{sanitized_job_name}_{now.strftime('%Y%m%d_%H%M%S')}"
+            jobs_base = Path("jobs").resolve()
+            job_dir = jobs_base / job_folder_name
+            # Guard against path traversal
+            if not job_dir.resolve().is_relative_to(jobs_base):
+                st.error("Invalid job name.")
+                st.stop()
+            crops_dir = job_dir / "crops"
+            job_dir.mkdir(parents=True, exist_ok=True)
+            crops_dir.mkdir(exist_ok=True)
 
+            # ---- Save original photo ----
+            orig_suffix = Path(img_name).suffix or ".jpg"
+            input_path = job_dir / f"input{orig_suffix}"
+            input_path.write_bytes(img_bytes)
+
+            # ---- Save annotated photo ----
+            annotated_rgb = annotated.convert("RGB")
+            result_path = job_dir / "result.jpg"
+            annotated_rgb.save(str(result_path), quality=95)
+
+            # ---- Generate and save crops ----
             saved_rows = []
             col_imgs = st.columns(4)
             col_idx = 0
@@ -577,6 +615,7 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
                         "width": x2 - x1, "height": y2 - y1
                     },
                     "cropped_image_path":   str(crop_path),
+                    "crop_file":            crop_name,
                     "processing_status":    "pending",
                 })
 
@@ -589,10 +628,43 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
                     )
                 col_idx += 1
 
-            st.success(f"\u2705 {len(saved_rows)} crops generated.")
+            # ---- Save metadata.json ----
+            config = st.session_state.get("pb_detection_config", {})
+            metadata = {
+                "job_name": job_folder_name,
+                "input_file": img_name,
+                "date": now.isoformat(),
+                "model": config.get("comp_model", ""),
+                "ic_model": config.get("ic_model"),
+                "detection_config": config,
+                "total_detections": len(saved_rows),
+                "detections": [
+                    {
+                        "index":       r["row_number"],
+                        "class_name":  r["detection_type"],
+                        "confidence":  r["detection_confidence"],
+                        "ic_subtype":  r["ic_subtype"],
+                        "bbox": [
+                            r["bounding_box"]["x"],
+                            r["bounding_box"]["y"],
+                            r["bounding_box"]["x"] + r["bounding_box"]["width"],
+                            r["bounding_box"]["y"] + r["bounding_box"]["height"],
+                        ],
+                        "crop_file":   r["crop_file"],
+                    }
+                    for r in saved_rows
+                ],
+            }
+            metadata_path = job_dir / "metadata.json"
+            with open(metadata_path, "w") as f:
+                json.dump(metadata, f, indent=2)
+
+            st.success(
+                f"\u2705 {len(saved_rows)} crops generated.\n\n"
+                f"\U0001f4c1 Job saved to `{job_dir}`"
+            )
 
             # Log to database if available
-            config = st.session_state.get("pb_detection_config", {})
             if st.session_state.get("db_connected", False):
                 try:
                     db = st.session_state.db
@@ -619,8 +691,6 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
                     st.info(f"\U0001f4be Session logged to database (import id: {import_id})")
                 except Exception as exc:
                     st.warning(f"Database logging failed: {exc}")
-            else:
-                st.info("Database not connected — results not persisted.")
 
 
 # ========== JOB VIEWER PAGE ==========
