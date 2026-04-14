@@ -3,19 +3,22 @@
 Streamlit Web Interface for nuts_vision
 Provides a graphical interface for:
 - PCB image upload and component detection
+- PCBA Photo Booth (dual-model detection pipeline)
 - Per-job viewer (input photo, result photo, cropped components, metadata)
 - Database viewer
 - Statistics
 """
 
+import io
 import streamlit as st
 import sys
 from pathlib import Path
 import pandas as pd
 from datetime import datetime
 import os
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 import json
+import numpy as np
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -29,6 +32,19 @@ try:
 except ImportError as e:
     st.error(f"Error importing modules: {e}")
     DB_AVAILABLE = False
+
+try:
+    from detect import DualModelDetector
+    DUAL_DETECTOR_AVAILABLE = True
+except ImportError:
+    DUAL_DETECTOR_AVAILABLE = False
+
+# All 16 component classes for comp_detect_best_v2
+COMP_DETECT_CLASSES = [
+    'IC', 'LED', 'battery', 'buzzer', 'capacitor', 'clock',
+    'connector', 'diode', 'display', 'fuse', 'inductor',
+    'potentiometer', 'relay', 'resistor', 'switch', 'transistor'
+]
 
 # Page configuration
 st.set_page_config(
@@ -76,8 +92,9 @@ st.sidebar.markdown("---")
 
 page = st.sidebar.radio(
     "Navigation",
-    ["\U0001f3e0 Home", "\U0001f4e4 Upload & Process", "\U0001f50d Job Viewer",
-     "\U0001f5c4\ufe0f Database Viewer", "\U0001f4ca Statistics", "\u2139\ufe0f About"]
+    ["\U0001f3e0 Home", "\U0001f4e4 Upload & Process", "\U0001f4f7 PCBA Photo Booth",
+     "\U0001f50d Job Viewer", "\U0001f5c4\ufe0f Database Viewer",
+     "\U0001f4ca Statistics", "\u2139\ufe0f About"]
 )
 
 st.sidebar.markdown("---")
@@ -165,6 +182,14 @@ elif page == "\U0001f4e4 Upload & Process":
         conf_threshold = st.slider("Confidence Threshold", min_value=0.1, max_value=0.9,
                                     value=0.25, step=0.05)
 
+    st.markdown("### Class Filter")
+    selected_classes = st.multiselect(
+        "Classes to detect (leave empty = detect all)",
+        options=COMP_DETECT_CLASSES,
+        default=[],
+        help="Select which component types to include in the results. Empty means all 16 classes."
+    )
+
     st.markdown("### Upload Images")
     uploaded_files = st.file_uploader("Choose PCB images", type=["jpg", "jpeg", "png"],
                                        accept_multiple_files=True)
@@ -198,11 +223,17 @@ elif page == "\U0001f4e4 Upload & Process":
                         f.write(uploaded_file.getbuffer())
                     try:
                         result = pipeline.process_image(str(file_path.resolve()), jobs_base_dir="jobs")
+                        # Apply optional class filter on the metadata
+                        dets = result["metadata"]["total_detections"]
+                        if selected_classes:
+                            filtered = [d for d in result["metadata"]["detections"]
+                                        if d["class_name"] in selected_classes]
+                            dets = len(filtered)
                         results_summary.append({
                             "file": uploaded_file.name,
                             "status": "\u2705 Success",
                             "job_folder": result["job_folder"],
-                            "detections": result["metadata"]["total_detections"]
+                            "detections": dets
                         })
                     except Exception as e:
                         results_summary.append({
@@ -229,6 +260,312 @@ elif page == "\U0001f4e4 Upload & Process":
         for idx, uploaded_file in enumerate(uploaded_files[:6]):
             with cols[idx % 3]:
                 st.image(Image.open(uploaded_file), caption=uploaded_file.name, use_container_width=True)
+
+
+
+# ========== PCBA PHOTO BOOTH PAGE ==========
+elif page == "\U0001f4f7 PCBA Photo Booth":
+    st.markdown('<div class="main-header">\U0001f4f7 PCBA Photo Booth</div>', unsafe_allow_html=True)
+    st.markdown(
+        "Dual-model PCBA inspection pipeline: upload → infer → validate → crop."
+    )
+
+    if not DUAL_DETECTOR_AVAILABLE:
+        st.error("DualModelDetector could not be imported. Check that `src/detect.py` is present.")
+        st.stop()
+
+    # ------------------------------------------------------------------
+    # Helper: draw bounding boxes on a PIL image
+    # ------------------------------------------------------------------
+    def _draw_boxes(pil_img: Image.Image, detections: list) -> Image.Image:
+        img = pil_img.copy().convert("RGB")
+        draw = ImageDraw.Draw(img)
+        palette = {
+            'IC': '#FF5733', 'LED': '#33FF57', 'battery': '#3357FF',
+            'buzzer': '#FF33A8', 'capacitor': '#33FFF5', 'clock': '#FFD700',
+            'connector': '#A833FF', 'diode': '#FF8C00', 'display': '#00CED1',
+            'fuse': '#8B4513', 'inductor': '#32CD32', 'potentiometer': '#FF1493',
+            'relay': '#1E90FF', 'resistor': '#FF6347', 'switch': '#7CFC00',
+            'transistor': '#DC143C',
+        }
+        for det in detections:
+            bbox = det.get('bbox', [])
+            if len(bbox) < 4:
+                continue
+            x1, y1, x2, y2 = [int(v) for v in bbox[:4]]
+            cls = det.get('class_name', '?')
+            color = palette.get(cls, '#FFFFFF')
+            draw.rectangle([x1, y1, x2, y2], outline=color, width=2)
+            label = cls
+            if det.get('ic_subtype'):
+                label += f" [{det['ic_subtype']}]"
+            conf = det.get('confidence', 0)
+            label += f" {conf:.2f}"
+            draw.text((x1 + 2, max(0, y1 - 14)), label, fill=color)
+        return img
+
+    # ------------------------------------------------------------------
+    # STEP 1 — Upload
+    # ------------------------------------------------------------------
+    st.markdown("## Step 1 — Upload Image")
+    uploaded = st.file_uploader(
+        "Drop a PCB image here",
+        type=["jpg", "jpeg", "png"],
+        key="pb_upload"
+    )
+
+    if uploaded:
+        st.session_state["pb_image_bytes"] = uploaded.read()
+        st.session_state["pb_image_name"] = uploaded.name
+        st.session_state.pop("pb_detections", None)  # reset previous run
+
+    if "pb_image_bytes" not in st.session_state:
+        st.info("Upload a PCB image to start.")
+        st.stop()
+
+    img_bytes = st.session_state["pb_image_bytes"]
+    img_name  = st.session_state["pb_image_name"]
+    pil_image = Image.open(io.BytesIO(img_bytes))
+
+    st.image(pil_image, caption=img_name, use_container_width=True)
+
+    # ------------------------------------------------------------------
+    # STEP 2 — Model configuration & inference
+    # ------------------------------------------------------------------
+    st.markdown("## Step 2 — Detection Configuration")
+
+    col_m1, col_m2 = st.columns(2)
+    with col_m1:
+        comp_model_path = st.text_input(
+            "comp_detect model path",
+            value="comp_detect_best_v2.onnx",
+            help="Path to comp_detect_best_v2 (.onnx or .pt)"
+        )
+        comp_conf = st.slider("comp_detect confidence", 0.1, 0.9, 0.25, 0.05, key="pb_comp_conf")
+    with col_m2:
+        ic_model_path = st.text_input(
+            "ic_detect model path (optional)",
+            value="ic_detect_best.onnx",
+            help="Path to ic_detect_best (.onnx or .pt) — leave blank to skip IC sub-classification"
+        )
+        ic_conf = st.slider("ic_detect confidence", 0.1, 0.9, 0.25, 0.05, key="pb_ic_conf")
+
+    st.markdown("### Classes to detect")
+    selected_classes = st.multiselect(
+        "Select component types (empty = all 16)",
+        options=COMP_DETECT_CLASSES,
+        default=COMP_DETECT_CLASSES,
+        key="pb_class_filter"
+    )
+
+    run_inference = st.button("\U0001f50d Run Detection", type="primary")
+
+    if run_inference:
+        if not Path(comp_model_path).exists():
+            st.error(f"comp_detect model not found: {comp_model_path}")
+        else:
+            # Save image to a temp file for the detector
+            tmp_dir = Path("/tmp/pb_uploads")
+            tmp_dir.mkdir(parents=True, exist_ok=True)
+            tmp_path = tmp_dir / img_name
+            tmp_path.write_bytes(img_bytes)
+
+            ic_path_arg = ic_model_path if ic_model_path and Path(ic_model_path).exists() else None
+            if ic_model_path and not Path(ic_model_path).exists():
+                st.warning(f"ic_detect model not found at '{ic_model_path}' — running single-model mode.")
+
+            with st.spinner("Running dual-model inference…"):
+                try:
+                    detector = DualModelDetector(
+                        comp_model_path=comp_model_path,
+                        ic_model_path=ic_path_arg,
+                        comp_conf=comp_conf,
+                        ic_conf=ic_conf,
+                    )
+                    detections = detector.detect(
+                        str(tmp_path),
+                        class_filter=selected_classes if selected_classes else None
+                    )
+                    st.session_state["pb_detections"] = detections
+                    st.session_state["pb_detection_config"] = {
+                        "comp_model": comp_model_path,
+                        "ic_model": ic_model_path,
+                        "comp_conf": comp_conf,
+                        "ic_conf": ic_conf,
+                        "class_filter": selected_classes,
+                        "iou_threshold": DualModelDetector.IOU_THRESHOLD,
+                    }
+                    st.success(f"\u2705 Detected {len(detections)} components.")
+                except Exception as exc:
+                    import traceback
+                    st.error(f"Inference error: {exc}")
+                    st.code(traceback.format_exc())
+
+    # ------------------------------------------------------------------
+    # STEP 3 — Show annotated image
+    # ------------------------------------------------------------------
+    if "pb_detections" in st.session_state:
+        detections: list = st.session_state["pb_detections"]
+
+        st.markdown("## Step 3 — Annotated Preview")
+        annotated = _draw_boxes(pil_image, detections)
+        st.image(annotated, caption="Detected components", use_container_width=True)
+
+        # ------------------------------------------------------------------
+        # STEP 4 — User validation (editable detection list)
+        # ------------------------------------------------------------------
+        st.markdown("## Step 4 — Validate & Edit Detections")
+        st.markdown(
+            "Review the detections below. Uncheck rows to exclude them, "
+            "or edit the component type directly."
+        )
+
+        # Build an editable dataframe
+        rows = []
+        for i, d in enumerate(detections):
+            rows.append({
+                "keep":             True,
+                "#":                i,
+                "type":             d.get("class_name", ""),
+                "ic_subtype":       d.get("ic_subtype") or "",
+                "confidence":       round(d.get("confidence", 0), 4),
+                "ic_confirmed":     d.get("ic_confirmed", False),
+                "x1": round(d["bbox"][0], 1), "y1": round(d["bbox"][1], 1),
+                "x2": round(d["bbox"][2], 1), "y2": round(d["bbox"][3], 1),
+            })
+
+        df_edit = pd.DataFrame(rows)
+        edited_df = st.data_editor(
+            df_edit,
+            column_config={
+                "keep": st.column_config.CheckboxColumn("Keep", default=True),
+                "type": st.column_config.SelectboxColumn(
+                    "Type", options=COMP_DETECT_CLASSES, required=True
+                ),
+                "ic_subtype": st.column_config.SelectboxColumn(
+                    "IC sub-type", options=["", "four_side", "two_side", "without_side"]
+                ),
+            },
+            disabled=["#", "confidence", "ic_confirmed", "x1", "y1", "x2", "y2"],
+            use_container_width=True,
+            num_rows="fixed",
+            key="pb_edit_df"
+        )
+
+        kept_rows = edited_df[edited_df["keep"] == True]
+        st.caption(f"{len(kept_rows)} / {len(detections)} detections kept.")
+
+        # ------------------------------------------------------------------
+        # Confirm & generate crops
+        # ------------------------------------------------------------------
+        if st.button("\u2702\ufe0f Confirm & Generate Crops", type="primary",
+                     disabled=len(kept_rows) == 0):
+            tmp_dir = Path("/tmp/pb_uploads")
+            tmp_path = tmp_dir / img_name
+            if not tmp_path.exists():
+                tmp_path.write_bytes(img_bytes)
+
+            import cv2
+            cv_img = cv2.imdecode(np.frombuffer(img_bytes, np.uint8), cv2.IMREAD_COLOR)
+
+            crops_dir = tmp_dir / "crops"
+            crops_dir.mkdir(parents=True, exist_ok=True)
+
+            saved_rows = []
+            col_imgs = st.columns(4)
+            col_idx = 0
+
+            for _, row in kept_rows.iterrows():
+                i = int(row["#"])
+                d = detections[i]
+                bbox = d["bbox"]
+                x1, y1, x2, y2 = (max(0, int(v)) for v in bbox[:4])
+                # Apply small padding
+                pad = 10
+                h_img, w_img = cv_img.shape[:2]
+                x1c = max(0, x1 - pad)
+                y1c = max(0, y1 - pad)
+                x2c = min(w_img, x2 + pad)
+                y2c = min(h_img, y2 + pad)
+                crop = cv_img[y1c:y2c, x1c:x2c]
+                cls = row["type"]
+                crop_name = f"{i:03d}_{cls}.jpg"
+                crop_path = crops_dir / crop_name
+                cv2.imwrite(str(crop_path), crop)
+
+                saved_rows.append({
+                    "row_number":           i,
+                    "detection_type":       cls,
+                    "ic_subtype":           row["ic_subtype"] or None,
+                    "detection_confidence": float(row["confidence"]),
+                    "ic_confidence":        d.get("ic_confidence"),
+                    "bounding_box": {
+                        "x": x1, "y": y1,
+                        "width": x2 - x1, "height": y2 - y1
+                    },
+                    "cropped_image_path":   str(crop_path),
+                    "processing_status":    "pending",
+                })
+
+                # Display crop thumbnail
+                with col_imgs[col_idx % 4]:
+                    st.image(
+                        Image.open(io.BytesIO(cv2.imencode(".jpg", crop)[1].tobytes())),
+                        caption=f"{cls} ({row['ic_subtype'] or '—'})",
+                        use_container_width=True
+                    )
+                col_idx += 1
+
+            st.success(f"\u2705 {len(saved_rows)} crops generated.")
+
+            # Log to database if available
+            config = st.session_state.get("pb_detection_config", {})
+            if st.session_state.get("db_connected", False):
+                try:
+                    with st.session_state.db.get_connection() as conn:
+                        with conn.cursor() as cur:
+                            cur.execute(
+                                """
+                                INSERT INTO log_pcba_pb_import
+                                    (image_storage_path, detection_config, total_detections, status)
+                                VALUES (%s, %s, %s, 'completed')
+                                RETURNING id
+                                """,
+                                (
+                                    img_name,
+                                    json.dumps(config),
+                                    len(saved_rows),
+                                )
+                            )
+                            import_id = cur.fetchone()[0]
+
+                        for row_data in saved_rows:
+                            with conn.cursor() as cur:
+                                cur.execute(
+                                    """
+                                    INSERT INTO log_pcba_pb_row_import
+                                        (log_pcba_pb_import_id, row_number, detection_type,
+                                         ic_subtype, detection_confidence, ic_confidence,
+                                         bounding_box, cropped_image_path, processing_status)
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                    """,
+                                    (
+                                        str(import_id),
+                                        row_data["row_number"],
+                                        row_data["detection_type"],
+                                        row_data["ic_subtype"],
+                                        row_data["detection_confidence"],
+                                        row_data["ic_confidence"],
+                                        json.dumps(row_data["bounding_box"]),
+                                        row_data["cropped_image_path"],
+                                        row_data["processing_status"],
+                                    )
+                                )
+                    st.info(f"\U0001f4be Session logged to database (import id: {import_id})")
+                except Exception as exc:
+                    st.warning(f"Database logging failed: {exc}")
+            else:
+                st.info("Database not connected — results not persisted.")
 
 
 # ========== JOB VIEWER PAGE ==========

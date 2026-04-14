@@ -170,6 +170,187 @@ class ComponentDetector:
         return all_detections
 
 
+class DualModelDetector:
+    """
+    Dual-model detector that combines comp_detect_best_v2 and ic_detect_best
+    for enhanced IC detection with visual sub-type classification.
+
+    Cross-referencing rules (IoU threshold = 0.5):
+    - IC in comp_detect + match in ic_detect  → confirmed IC, enriched with sub-type
+    - IC in ic_detect without match           → added as IC (missed by comp_detect)
+    - IC in comp_detect without ic_detect match → kept, flagged as "unconfirmed"
+    - Non-IC classes from comp_detect         → kept as-is (after optional class filter)
+    """
+
+    IOU_THRESHOLD = 0.5
+
+    COMP_DETECT_CLASSES = [
+        'IC', 'LED', 'battery', 'buzzer', 'capacitor', 'clock',
+        'connector', 'diode', 'display', 'fuse', 'inductor',
+        'potentiometer', 'relay', 'resistor', 'switch', 'transistor'
+    ]
+    IC_SUBTYPES = ['four_side', 'two_side', 'without_side']
+
+    def __init__(
+        self,
+        comp_model_path: str,
+        ic_model_path: Optional[str] = None,
+        comp_conf: float = 0.25,
+        ic_conf: float = 0.25
+    ):
+        """
+        Args:
+            comp_model_path: Path to comp_detect_best_v2 model (.onnx or .pt)
+            ic_model_path:   Path to ic_detect_best model (.onnx or .pt), optional
+            comp_conf:       Confidence threshold for comp_detect
+            ic_conf:         Confidence threshold for ic_detect
+        """
+        self.comp_detector = ComponentDetector(comp_model_path, comp_conf)
+        self.ic_detector = ComponentDetector(ic_model_path, ic_conf) if ic_model_path else None
+
+    # ------------------------------------------------------------------
+    # IoU helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _compute_iou(box_a: List[float], box_b: List[float]) -> float:
+        """Compute IoU between two [x1, y1, x2, y2] boxes."""
+        x1 = max(box_a[0], box_b[0])
+        y1 = max(box_a[1], box_b[1])
+        x2 = min(box_a[2], box_b[2])
+        y2 = min(box_a[3], box_b[3])
+
+        inter_w = max(0.0, x2 - x1)
+        inter_h = max(0.0, y2 - y1)
+        inter = inter_w * inter_h
+        if inter == 0:
+            return 0.0
+
+        area_a = (box_a[2] - box_a[0]) * (box_a[3] - box_a[1])
+        area_b = (box_b[2] - box_b[0]) * (box_b[3] - box_b[1])
+        union = area_a + area_b - inter
+        return inter / union if union > 0 else 0.0
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def detect(
+        self,
+        image_path: str,
+        class_filter: Optional[List[str]] = None
+    ) -> List[dict]:
+        """
+        Run dual-model inference and return a unified detection list.
+
+        Each detection dict contains:
+            class_name        (str)  – component type from COMP_DETECT_CLASSES
+            ic_subtype        (str|None)  – 'four_side', 'two_side', 'without_side' or None
+            confidence        (float) – best confidence from comp_detect (or ic_detect if new)
+            ic_confidence     (float|None) – ic_detect confidence when applicable
+            ic_confirmed      (bool)  – True if IC was confirmed by ic_detect match
+            bbox              (list)  – [x1, y1, x2, y2]
+            bbox_center       (list)  – [cx, cy, w, h]
+            class_id          (int)
+
+        Args:
+            image_path:   Path to the PCB image
+            class_filter: Optional list of class names to keep (e.g. ['IC', 'capacitor'])
+                          If None or empty, all 16 classes are returned.
+        """
+        # --- 1. comp_detect (always run) ---
+        comp_dets = self.comp_detector.detect_components(
+            image_path, save_visualization=False
+        )
+
+        # --- 2. ic_detect (optional) ---
+        ic_dets: List[dict] = []
+        if self.ic_detector is not None:
+            ic_dets = self.ic_detector.detect_components(
+                image_path, save_visualization=False
+            )
+
+        # --- 3. Cross-reference ICs ---
+        unified = self._cross_reference(comp_dets, ic_dets)
+
+        # --- 4. Apply class filter ---
+        if class_filter:
+            filter_set = {c.lower() for c in class_filter}
+            unified = [d for d in unified if d['class_name'].lower() in filter_set]
+
+        return unified
+
+    # ------------------------------------------------------------------
+    # Internal cross-referencing logic
+    # ------------------------------------------------------------------
+
+    def _cross_reference(
+        self,
+        comp_dets: List[dict],
+        ic_dets: List[dict]
+    ) -> List[dict]:
+        """Merge comp_detect and ic_detect detections."""
+        matched_ic_indices: set = set()  # indices into ic_dets already consumed
+
+        result: List[dict] = []
+
+        for cd in comp_dets:
+            entry = {
+                'class_id':      cd['class_id'],
+                'class_name':    cd['class_name'],
+                'confidence':    cd['confidence'],
+                'ic_confidence': None,
+                'ic_subtype':    None,
+                'ic_confirmed':  False,
+                'bbox':          cd['bbox'],
+                'bbox_center':   cd['bbox_center'],
+            }
+
+            if cd['class_name'].upper() == 'IC' and ic_dets:
+                best_iou = 0.0
+                best_idx = -1
+                for idx, icd in enumerate(ic_dets):
+                    iou = self._compute_iou(cd['bbox'], icd['bbox'])
+                    if iou > best_iou:
+                        best_iou = iou
+                        best_idx = idx
+
+                if best_iou >= self.IOU_THRESHOLD:
+                    matched_ic = ic_dets[best_idx]
+                    matched_ic_indices.add(best_idx)
+                    entry['ic_subtype']    = matched_ic['class_name']
+                    entry['ic_confidence'] = matched_ic['confidence']
+                    entry['ic_confirmed']  = True
+                    # Keep the best confidence from either model
+                    entry['confidence']    = max(cd['confidence'], matched_ic['confidence'])
+                else:
+                    # IC detected by comp_detect but not confirmed by ic_detect
+                    entry['ic_confirmed'] = False
+
+            result.append(entry)
+
+        # --- ICs found by ic_detect but missed by comp_detect ---
+        for idx, icd in enumerate(ic_dets):
+            if idx not in matched_ic_indices:
+                bbox = icd['bbox']
+                cx = (bbox[0] + bbox[2]) / 2
+                cy = (bbox[1] + bbox[3]) / 2
+                w  = bbox[2] - bbox[0]
+                h  = bbox[3] - bbox[1]
+                result.append({
+                    'class_id':      -1,
+                    'class_name':    'IC',
+                    'confidence':    icd['confidence'],
+                    'ic_confidence': icd['confidence'],
+                    'ic_subtype':    icd['class_name'],
+                    'ic_confirmed':  True,
+                    'bbox':          bbox,
+                    'bbox_center':   [cx, cy, w, h],
+                })
+
+        return result
+
+
 def main():
     parser = argparse.ArgumentParser(description="Detect electronic components in images")
     parser.add_argument(
