@@ -124,7 +124,7 @@ if page == "\U0001f3e0 Home":
     #### 🎯 How it works:
     1. **Upload** a photo of an electronic circuit board
     2. **Detect** — YOLOv8 identifies up to 16 component types on the board
-    3. **IC sub-classification** — a dedicated ic\_detect model classifies ICs by pin layout (four\_side, two\_side, without\_side)
+    3. **IC sub-classification** — a dedicated `ic_detect` model classifies ICs by pin layout (`four_side`, `two_side`, `without_side`)
     4. **Crop** — each detected component is saved as a separate image
     5. **Browse** — all results are organized in a per-job folder
 
@@ -949,8 +949,8 @@ elif page == "\u2139\ufe0f About":
     and produces cropped images of each detected component.
 
     #### 🎯 Dual-Model Detection:
-    - **comp\_detect\_best\_v2**: detects 16 classes — IC, LED, battery, buzzer, capacitor, clock, connector, diode, display, fuse, inductor, potentiometer, relay, resistor, switch, transistor
-    - **ic\_detect\_best**: classifies ICs by pin layout — four\_side (4 rows of pins), two\_side (2 rows), without\_side (BGA/QFN)
+    - **`comp_detect_best_v2`**: detects 16 classes — IC, LED, battery, buzzer, capacitor, clock, connector, diode, display, fuse, inductor, potentiometer, relay, resistor, switch, transistor
+    - **`ic_detect_best`**: classifies ICs by pin layout — `four_side` (4 rows of pins), `two_side` (2 rows), `without_side` (BGA/QFN)
     - Results are cross-referenced via IoU matching for enhanced IC detection accuracy
 
     #### 🛠️ Key Technologies:
