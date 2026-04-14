@@ -316,7 +316,8 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
 
     if uploaded:
         st.session_state["pb_image_bytes"] = uploaded.read()
-        st.session_state["pb_image_name"] = uploaded.name
+        # Sanitize: keep only the basename, strip any path separators
+        st.session_state["pb_image_name"] = Path(uploaded.name).name
         st.session_state.pop("pb_detections", None)  # reset previous run
 
     if "pb_image_bytes" not in st.session_state:
@@ -361,23 +362,41 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
     run_inference = st.button("\U0001f50d Run Detection", type="primary")
 
     if run_inference:
-        if not Path(comp_model_path).exists():
-            st.error(f"comp_detect model not found: {comp_model_path}")
+        # Resolve model paths to absolute paths anchored in the project root,
+        # accepting only filenames (no directory traversal).
+        _project_root = Path(__file__).parent.resolve()
+        comp_model_resolved = (_project_root / Path(comp_model_path).name).resolve()
+        ic_model_resolved   = (_project_root / Path(ic_model_path).name).resolve() if ic_model_path else None
+
+        # Guard: paths must stay inside the project root
+        def _safe_path(p, root):
+            try:
+                p.relative_to(root)
+                return p
+            except ValueError:
+                return None
+
+        comp_model_resolved = _safe_path(comp_model_resolved, _project_root)
+        if ic_model_resolved:
+            ic_model_resolved = _safe_path(ic_model_resolved, _project_root)
+
+        if comp_model_resolved is None or not comp_model_resolved.exists():
+            st.error(f"comp_detect model not found or path not allowed: {comp_model_path}")
         else:
             # Save image to a temp file for the detector
             tmp_dir = Path("/tmp/pb_uploads")
             tmp_dir.mkdir(parents=True, exist_ok=True)
-            tmp_path = tmp_dir / img_name
+            tmp_path = (tmp_dir / img_name).resolve()
             tmp_path.write_bytes(img_bytes)
 
-            ic_path_arg = ic_model_path if ic_model_path and Path(ic_model_path).exists() else None
-            if ic_model_path and not Path(ic_model_path).exists():
+            ic_path_arg = str(ic_model_resolved) if ic_model_resolved and ic_model_resolved.exists() else None
+            if ic_model_path and (ic_model_resolved is None or not ic_model_resolved.exists()):
                 st.warning(f"ic_detect model not found at '{ic_model_path}' — running single-model mode.")
 
             with st.spinner("Running dual-model inference…"):
                 try:
                     detector = DualModelDetector(
-                        comp_model_path=comp_model_path,
+                        comp_model_path=str(comp_model_resolved),
                         ic_model_path=ic_path_arg,
                         comp_conf=comp_conf,
                         ic_conf=ic_conf,
@@ -388,8 +407,8 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
                     )
                     st.session_state["pb_detections"] = detections
                     st.session_state["pb_detection_config"] = {
-                        "comp_model": comp_model_path,
-                        "ic_model": ic_model_path,
+                        "comp_model": Path(comp_model_path).name,
+                        "ic_model": Path(ic_model_path).name if ic_model_path else None,
                         "comp_conf": comp_conf,
                         "ic_conf": ic_conf,
                         "class_filter": selected_classes,
@@ -452,7 +471,7 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
             key="pb_edit_df"
         )
 
-        kept_rows = edited_df[edited_df["keep"] == True]
+        kept_rows = edited_df[edited_df["keep"]]
         st.caption(f"{len(kept_rows)} / {len(detections)} detections kept.")
 
         # ------------------------------------------------------------------
@@ -460,15 +479,10 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
         # ------------------------------------------------------------------
         if st.button("\u2702\ufe0f Confirm & Generate Crops", type="primary",
                      disabled=len(kept_rows) == 0):
-            tmp_dir = Path("/tmp/pb_uploads")
-            tmp_path = tmp_dir / img_name
-            if not tmp_path.exists():
-                tmp_path.write_bytes(img_bytes)
-
             import cv2
             cv_img = cv2.imdecode(np.frombuffer(img_bytes, np.uint8), cv2.IMREAD_COLOR)
 
-            crops_dir = tmp_dir / "crops"
+            crops_dir = Path("/tmp/pb_uploads/crops")
             crops_dir.mkdir(parents=True, exist_ok=True)
 
             saved_rows = []
