@@ -279,34 +279,62 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
         st.stop()
 
     # ------------------------------------------------------------------
-    # Helper: draw bounding boxes on a PIL image
+    # Helper: draw bounding boxes with semi-transparent filled zones
     # ------------------------------------------------------------------
+    DETECTION_PALETTE = {
+        'IC': '#FF5733', 'LED': '#33FF57', 'battery': '#3357FF',
+        'buzzer': '#FF33A8', 'capacitor': '#33FFF5', 'clock': '#FFD700',
+        'connector': '#A833FF', 'diode': '#FF8C00', 'display': '#00CED1',
+        'fuse': '#8B4513', 'inductor': '#32CD32', 'potentiometer': '#FF1493',
+        'relay': '#1E90FF', 'resistor': '#FF6347', 'switch': '#7CFC00',
+        'transistor': '#DC143C',
+    }
+
+    def _hex_to_rgba(hex_color: str, alpha: int = 60):
+        """Convert '#RRGGBB' to an (R, G, B, A) tuple."""
+        h = hex_color.lstrip('#')
+        return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16), alpha)
+
     def _draw_boxes(pil_img: Image.Image, detections: list) -> Image.Image:
-        img = pil_img.copy().convert("RGB")
+        img = pil_img.copy().convert("RGBA")
+        # Transparent overlay for filled zones
+        overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        overlay_draw = ImageDraw.Draw(overlay)
         draw = ImageDraw.Draw(img)
-        palette = {
-            'IC': '#FF5733', 'LED': '#33FF57', 'battery': '#3357FF',
-            'buzzer': '#FF33A8', 'capacitor': '#33FFF5', 'clock': '#FFD700',
-            'connector': '#A833FF', 'diode': '#FF8C00', 'display': '#00CED1',
-            'fuse': '#8B4513', 'inductor': '#32CD32', 'potentiometer': '#FF1493',
-            'relay': '#1E90FF', 'resistor': '#FF6347', 'switch': '#7CFC00',
-            'transistor': '#DC143C',
-        }
+
         for det in detections:
             bbox = det.get('bbox', [])
             if len(bbox) < 4:
                 continue
             x1, y1, x2, y2 = [int(v) for v in bbox[:4]]
             cls = det.get('class_name', '?')
-            color = palette.get(cls, '#FFFFFF')
-            draw.rectangle([x1, y1, x2, y2], outline=color, width=2)
+            color_hex = DETECTION_PALETTE.get(cls, '#FFFFFF')
+            fill_rgba = _hex_to_rgba(color_hex, alpha=50)
+
+            # Semi-transparent filled zone
+            overlay_draw.rectangle([x1, y1, x2, y2], fill=fill_rgba)
+
+            # Solid outline (thicker for visibility)
+            draw.rectangle([x1, y1, x2, y2], outline=color_hex, width=3)
+
+            # Label
             label = cls
             if det.get('ic_subtype'):
                 label += f" [{det['ic_subtype']}]"
             conf = det.get('confidence', 0)
             label += f" {conf:.2f}"
-            draw.text((x1 + 2, max(0, y1 - 14)), label, fill=color)
-        return img
+
+            # Label background for readability
+            text_y = max(0, y1 - 16)
+            draw.rectangle(
+                [x1, text_y, x1 + len(label) * 7 + 4, text_y + 14],
+                fill=color_hex,
+            )
+            draw.text((x1 + 2, text_y + 1), label, fill="white")
+
+        # Composite overlay onto image
+        img = Image.alpha_composite(img, overlay)
+        return img.convert("RGB")
 
     # ------------------------------------------------------------------
     # STEP 1 — Upload
@@ -439,9 +467,28 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
     if "pb_detections" in st.session_state:
         detections: list = st.session_state["pb_detections"]
 
+        # For ICs, keep only those confirmed by ic_detect
+        detections = [
+            d for d in detections
+            if d.get('class_name', '').upper() != 'IC' or d.get('ic_confirmed', False)
+        ]
+        # Update session state so Step 4 also works on the filtered list
+        st.session_state["pb_detections"] = detections
+
         st.markdown("## Step 3 — Annotated Preview")
         annotated = _draw_boxes(pil_image, detections)
         st.image(annotated, caption="Detected components", use_container_width=True)
+
+        # Color legend
+        detected_types = sorted({d.get('class_name', '?') for d in detections})
+        if detected_types:
+            legend_html = " ".join(
+                f'<span style="display:inline-block;margin:2px 6px;padding:2px 8px;'
+                f'background:{DETECTION_PALETTE.get(t, "#888")};color:#fff;'
+                f'border-radius:4px;font-size:0.85rem;">{t}</span>'
+                for t in detected_types
+            )
+            st.markdown(legend_html, unsafe_allow_html=True)
 
         # ------------------------------------------------------------------
         # STEP 4 — User validation (editable detection list)
