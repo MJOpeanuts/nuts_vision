@@ -348,10 +348,15 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
     )
 
     if uploaded:
-        st.session_state["pb_image_bytes"] = uploaded.read()
-        # Sanitize: keep only the basename, strip any path separators
-        st.session_state["pb_image_name"] = Path(uploaded.name).name
-        st.session_state.pop("pb_detections", None)  # reset previous run
+        # Only reset detections when a genuinely new file is uploaded,
+        # not on every Streamlit rerun (which would wipe Step 4 state).
+        current_file_id = uploaded.file_id
+        if current_file_id != st.session_state.get("pb_upload_file_id"):
+            st.session_state["pb_upload_file_id"] = current_file_id
+            st.session_state["pb_image_bytes"] = uploaded.read()
+            # Sanitize: keep only the basename, strip any path separators
+            st.session_state["pb_image_name"] = Path(uploaded.name).name
+            st.session_state.pop("pb_detections", None)  # reset previous run
 
     if "pb_image_bytes" not in st.session_state:
         st.info("Upload a PCB image to start.")
