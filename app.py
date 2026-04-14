@@ -335,21 +335,37 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
     # ------------------------------------------------------------------
     st.markdown("## Step 2 — Detection Configuration")
 
+    _project_root = Path(__file__).parent.resolve()
+    _model_files = sorted(
+        [p for p in _project_root.iterdir()
+         if p.is_file() and p.suffix in (".onnx", ".pt")]
+    )
+    _model_names = [p.name for p in _model_files]
+
     col_m1, col_m2 = st.columns(2)
     with col_m1:
-        comp_model_path = st.text_input(
-            "comp_detect model path",
-            value="comp_detect_best_v2.onnx",
-            help="Path to comp_detect_best_v2 (.onnx or .pt)"
-        )
+        comp_model_name = st.selectbox(
+            "comp_detect model",
+            options=_model_names,
+            index=_model_names.index("comp_detect_best_v2.onnx") if "comp_detect_best_v2.onnx" in _model_names else 0,
+            help="comp_detect_best_v2 model (.onnx or .pt) — must be in the project root",
+            key="pb_comp_model"
+        ) if _model_names else None
         comp_conf = st.slider("comp_detect confidence", 0.1, 0.9, 0.25, 0.05, key="pb_comp_conf")
     with col_m2:
-        ic_model_path = st.text_input(
-            "ic_detect model path (optional)",
-            value="ic_detect_best.onnx",
-            help="Path to ic_detect_best (.onnx or .pt) — leave blank to skip IC sub-classification"
+        _ic_model_options = ["(none)"] + _model_names
+        _ic_default = "ic_detect_best.onnx" if "ic_detect_best.onnx" in _model_names else "(none)"
+        ic_model_name = st.selectbox(
+            "ic_detect model (optional)",
+            options=_ic_model_options,
+            index=_ic_model_options.index(_ic_default),
+            help="ic_detect_best model (.onnx or .pt) — leave as (none) to skip IC sub-classification",
+            key="pb_ic_model"
         )
         ic_conf = st.slider("ic_detect confidence", 0.1, 0.9, 0.25, 0.05, key="pb_ic_conf")
+
+    if not _model_names:
+        st.warning("No .onnx or .pt model files found in the project root.")
 
     st.markdown("### Classes to detect")
     selected_classes = st.multiselect(
@@ -359,39 +375,32 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
         key="pb_class_filter"
     )
 
-    run_inference = st.button("\U0001f50d Run Detection", type="primary")
+    run_inference = st.button("\U0001f50d Run Detection", type="primary",
+                              disabled=not _model_names)
 
     if run_inference:
-        # Resolve model paths to absolute paths anchored in the project root,
-        # accepting only filenames (no directory traversal).
-        _project_root = Path(__file__).parent.resolve()
-        comp_model_resolved = (_project_root / Path(comp_model_path).name).resolve()
-        ic_model_resolved   = (_project_root / Path(ic_model_path).name).resolve() if ic_model_path else None
+        import uuid as _uuid
+        # Use only server-side paths resolved from the project root
+        comp_model_resolved = (_project_root / comp_model_name).resolve()
+        ic_model_resolved = (
+            (_project_root / ic_model_name).resolve()
+            if ic_model_name and ic_model_name != "(none)" else None
+        )
 
-        # Guard: paths must stay inside the project root
-        def _safe_path(p, root):
-            try:
-                p.relative_to(root)
-                return p
-            except ValueError:
-                return None
-
-        comp_model_resolved = _safe_path(comp_model_resolved, _project_root)
-        if ic_model_resolved:
-            ic_model_resolved = _safe_path(ic_model_resolved, _project_root)
-
-        if comp_model_resolved is None or not comp_model_resolved.exists():
-            st.error(f"comp_detect model not found or path not allowed: {comp_model_path}")
+        if not comp_model_resolved.exists():
+            st.error(f"comp_detect model not found: {comp_model_name}")
         else:
-            # Save image to a temp file for the detector
+            # Save image to a temp file using a UUID filename (never user-controlled)
             tmp_dir = Path("/tmp/pb_uploads")
             tmp_dir.mkdir(parents=True, exist_ok=True)
-            tmp_path = (tmp_dir / img_name).resolve()
+            # Preserve the original extension but use a random name to avoid collisions
+            _orig_suffix = Path(img_name).suffix or ".jpg"
+            tmp_path = tmp_dir / f"{_uuid.uuid4().hex}{_orig_suffix}"
             tmp_path.write_bytes(img_bytes)
 
             ic_path_arg = str(ic_model_resolved) if ic_model_resolved and ic_model_resolved.exists() else None
-            if ic_model_path and (ic_model_resolved is None or not ic_model_resolved.exists()):
-                st.warning(f"ic_detect model not found at '{ic_model_path}' — running single-model mode.")
+            if ic_model_name and ic_model_name != "(none)" and (ic_model_resolved is None or not ic_model_resolved.exists()):
+                st.warning(f"ic_detect model not found: {ic_model_name} — running single-model mode.")
 
             with st.spinner("Running dual-model inference…"):
                 try:
@@ -407,8 +416,8 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
                     )
                     st.session_state["pb_detections"] = detections
                     st.session_state["pb_detection_config"] = {
-                        "comp_model": Path(comp_model_path).name,
-                        "ic_model": Path(ic_model_path).name if ic_model_path else None,
+                        "comp_model": comp_model_name,
+                        "ic_model": ic_model_name if ic_model_name != "(none)" else None,
                         "comp_conf": comp_conf,
                         "ic_conf": ic_conf,
                         "class_filter": selected_classes,
@@ -564,7 +573,7 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
                                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                                     """,
                                     (
-                                        str(import_id),
+                                        import_id,
                                         row_data["row_number"],
                                         row_data["detection_type"],
                                         row_data["ic_subtype"],

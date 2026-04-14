@@ -338,7 +338,7 @@ class DualModelDetector:
                 w  = bbox[2] - bbox[0]
                 h  = bbox[3] - bbox[1]
                 result.append({
-                    'class_id':      -1,
+                    'class_id':      None,   # not assigned by comp_detect
                     'class_name':    'IC',
                     'confidence':    icd['confidence'],
                     'ic_confidence': icd['confidence'],
