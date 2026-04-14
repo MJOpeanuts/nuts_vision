@@ -512,6 +512,10 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
                 "x2": round(d["bbox"][2], 1), "y2": round(d["bbox"][3], 1),
             })
 
+        if not rows:
+            st.info("No detections to display.")
+            st.stop()
+
         df_edit = pd.DataFrame(rows)
         edited_df = st.data_editor(
             df_edit,
