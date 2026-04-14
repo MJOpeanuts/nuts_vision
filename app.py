@@ -250,7 +250,7 @@ elif page == "\U0001f4e4 Upload & Process":
                 status_text.text("Processing complete!")
                 st.success("\u2705 Processing completed!")
                 st.markdown("### Results Summary")
-                st.dataframe(pd.DataFrame(results_summary), use_container_width=True)
+                st.dataframe(pd.DataFrame(results_summary), width="stretch")
                 st.info("\U0001f4c1 View detailed results in the **Job Viewer** page.")
             except Exception as e:
                 st.error(f"Error during processing: {str(e)}")
@@ -263,7 +263,7 @@ elif page == "\U0001f4e4 Upload & Process":
         cols = st.columns(min(3, len(uploaded_files)))
         for idx, uploaded_file in enumerate(uploaded_files[:6]):
             with cols[idx % 3]:
-                st.image(Image.open(uploaded_file), caption=uploaded_file.name, use_container_width=True)
+                st.image(Image.open(uploaded_file), caption=uploaded_file.name, width="stretch")
 
 
 
@@ -309,13 +309,13 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
             x1, y1, x2, y2 = [int(v) for v in bbox[:4]]
             cls = det.get('class_name', '?')
             color_hex = DETECTION_PALETTE.get(cls, '#FFFFFF')
-            fill_rgba = _hex_to_rgba(color_hex, alpha=50)
+            fill_rgba = _hex_to_rgba(color_hex, alpha=90)
 
             # Semi-transparent filled zone
             overlay_draw.rectangle([x1, y1, x2, y2], fill=fill_rgba)
 
             # Solid outline (thicker for visibility)
-            draw.rectangle([x1, y1, x2, y2], outline=color_hex, width=3)
+            draw.rectangle([x1, y1, x2, y2], outline=color_hex, width=4)
 
             # Label
             label = cls
@@ -361,7 +361,7 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
     img_name  = st.session_state["pb_image_name"]
     pil_image = Image.open(io.BytesIO(img_bytes))
 
-    st.image(pil_image, caption=img_name, use_container_width=True)
+    st.image(pil_image, caption=img_name, width="stretch")
 
     # ------------------------------------------------------------------
     # STEP 2 — Model configuration & inference
@@ -476,7 +476,7 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
 
         st.markdown("## Step 3 — Annotated Preview")
         annotated = _draw_boxes(pil_image, detections)
-        st.image(annotated, caption="Detected components", use_container_width=True)
+        st.image(annotated, caption="Detected components", width="stretch")
 
         # Color legend
         detected_types = sorted({d.get('class_name', '?') for d in detections})
@@ -525,7 +525,7 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
                 ),
             },
             disabled=["#", "confidence", "ic_confirmed", "x1", "y1", "x2", "y2"],
-            use_container_width=True,
+            width="stretch",
             num_rows="fixed",
             key="pb_edit_df"
         )
@@ -585,7 +585,7 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
                     st.image(
                         Image.open(io.BytesIO(cv2.imencode(".jpg", crop)[1].tobytes())),
                         caption=f"{cls} ({row['ic_subtype'] or '—'})",
-                        use_container_width=True
+                        width="stretch"
                     )
                 col_idx += 1
 
@@ -685,7 +685,7 @@ elif page == "\U0001f50d Job Viewer":
                 input_photos = list(job_dir.glob("input.*"))
                 if input_photos:
                     try:
-                        st.image(Image.open(input_photos[0]), caption="Input", use_container_width=True)
+                        st.image(Image.open(input_photos[0]), caption="Input", width="stretch")
                     except Exception as e:
                         st.error(f"Could not display input photo: {e}")
                 else:
@@ -696,7 +696,7 @@ elif page == "\U0001f50d Job Viewer":
                 result_photo = job_dir / "result.jpg"
                 if result_photo.exists():
                     try:
-                        st.image(Image.open(result_photo), caption="Detected components", use_container_width=True)
+                        st.image(Image.open(result_photo), caption="Detected components", width="stretch")
                     except Exception as e:
                         st.error(f"Could not display result photo: {e}")
                 else:
@@ -721,7 +721,7 @@ elif page == "\U0001f50d Job Viewer":
                                     caption = det.get("class_name", crop_file.stem)
                                     if "confidence" in det:
                                         caption += f" ({det['confidence']:.2f})"
-                                    st.image(Image.open(crop_file), caption=caption, use_container_width=True)
+                                    st.image(Image.open(crop_file), caption=caption, width="stretch")
                                 except Exception as e:
                                     st.error(f"Error: {e}")
                 else:
@@ -739,7 +739,7 @@ elif page == "\U0001f50d Job Viewer":
                             "crop_file": d.get("crop_file", "—")
                         } for d in detections
                     ])
-                    st.dataframe(df_det, use_container_width=True)
+                    st.dataframe(df_det, width="stretch")
                 else:
                     st.info("No detections in this job.")
 
@@ -778,7 +778,7 @@ elif page == "\U0001f5c4\ufe0f Database Viewer":
                     df = pd.DataFrame(data)
                     if "upload_at" in df.columns:
                         df["upload_at"] = pd.to_datetime(df["upload_at"]).dt.strftime("%Y-%m-%d %H:%M:%S")
-                    st.dataframe(df, use_container_width=True, height=400)
+                    st.dataframe(df, width="stretch", height=400)
                     st.caption(f"Total records: {len(df)}")
                 else:
                     st.info("No images in database yet.")
@@ -790,7 +790,7 @@ elif page == "\U0001f5c4\ufe0f Database Viewer":
                     for col in ["started_at", "ended_at"]:
                         if col in df.columns:
                             df[col] = pd.to_datetime(df[col]).dt.strftime("%Y-%m-%d %H:%M:%S")
-                    st.dataframe(df, use_container_width=True, height=400)
+                    st.dataframe(df, width="stretch", height=400)
                     st.caption(f"Total records: {len(df)}")
                     if len(df) > 0:
                         st.markdown("---")
@@ -815,7 +815,7 @@ elif page == "\U0001f5c4\ufe0f Database Viewer":
                 data = st.session_state.db.get_all_detections(job_id=job_id)
                 if data:
                     df = pd.DataFrame(data)
-                    st.dataframe(df, use_container_width=True, height=400)
+                    st.dataframe(df, width="stretch", height=400)
                     st.caption(f"Total records: {len(df)}")
                     if "class_name" in df.columns:
                         st.markdown("---")
@@ -839,7 +839,7 @@ elif page == "\U0001f5c4\ufe0f Database Viewer":
                     df = pd.DataFrame(data)
                     if "created_at" in df.columns:
                         df["created_at"] = pd.to_datetime(df["created_at"]).dt.strftime("%Y-%m-%d %H:%M:%S")
-                    st.dataframe(df, use_container_width=True, height=400)
+                    st.dataframe(df, width="stretch", height=400)
                     st.caption(f"Total records: {len(df)}")
                 else:
                     st.info("No cropped components in database yet.")
@@ -855,7 +855,7 @@ elif page == "\U0001f5c4\ufe0f Database Viewer":
                         df["detection_config"] = df["detection_config"].apply(
                             lambda v: json.dumps(v, ensure_ascii=False)[:80] + "…" if v else "—"
                         )
-                    st.dataframe(df, use_container_width=True, height=400)
+                    st.dataframe(df, width="stretch", height=400)
                     st.caption(f"Total records: {len(df)}")
 
                     if len(df) > 0:
@@ -865,7 +865,7 @@ elif page == "\U0001f5c4\ufe0f Database Viewer":
                         if selected_import:
                             rows = st.session_state.db.get_pcba_import_rows(str(selected_import))
                             if rows:
-                                st.dataframe(pd.DataFrame(rows), use_container_width=True, height=400)
+                                st.dataframe(pd.DataFrame(rows), width="stretch", height=400)
                             else:
                                 st.info("No detection rows for this import session.")
                 else:
@@ -892,7 +892,7 @@ elif page == "\U0001f5c4\ufe0f Database Viewer":
                     df = pd.DataFrame(data)
                     if "created_at" in df.columns:
                         df["created_at"] = pd.to_datetime(df["created_at"]).dt.strftime("%Y-%m-%d %H:%M:%S")
-                    st.dataframe(df, use_container_width=True, height=400)
+                    st.dataframe(df, width="stretch", height=400)
                     st.caption(f"Total records: {len(df)}")
                     if "detection_type" in df.columns:
                         st.markdown("---")
@@ -932,7 +932,7 @@ elif page == "\U0001f4ca Statistics":
                 with col1:
                     st.bar_chart(df_c.set_index("Component"))
                 with col2:
-                    st.dataframe(df_c, use_container_width=True)
+                    st.dataframe(df_c, width="stretch")
             else:
                 st.info("No component data available yet.")
 
@@ -946,7 +946,7 @@ elif page == "\U0001f4ca Statistics":
                         df_j[col] = pd.to_datetime(df_j[col]).dt.strftime("%Y-%m-%d %H:%M:%S")
                 show_cols = [c for c in ["job_id", "job_name", "file_name", "started_at", "detection_count"]
                              if c in df_j.columns]
-                st.dataframe(df_j[show_cols], use_container_width=True)
+                st.dataframe(df_j[show_cols], width="stretch")
             else:
                 st.info("No jobs recorded yet.")
 
@@ -975,7 +975,7 @@ elif page == "\U0001f4ca Statistics":
                     with col_left:
                         st.bar_chart(df_pc.set_index("Component"))
                     with col_right:
-                        st.dataframe(df_pc, use_container_width=True)
+                        st.dataframe(df_pc, width="stretch")
                 else:
                     st.info("No PCBA detection data yet.")
             except Exception:
