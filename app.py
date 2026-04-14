@@ -326,8 +326,9 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
 
             # Label background for readability
             text_y = max(0, y1 - 16)
+            text_w = draw.textlength(label) if hasattr(draw, 'textlength') else len(label) * 7
             draw.rectangle(
-                [x1, text_y, x1 + len(label) * 7 + 4, text_y + 14],
+                [x1, text_y, x1 + int(text_w) + 6, text_y + 14],
                 fill=color_hex,
             )
             draw.text((x1 + 2, text_y + 1), label, fill="white")
@@ -465,15 +466,13 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
     # STEP 3 — Show annotated image
     # ------------------------------------------------------------------
     if "pb_detections" in st.session_state:
-        detections: list = st.session_state["pb_detections"]
+        raw_detections: list = st.session_state["pb_detections"]
 
         # For ICs, keep only those confirmed by ic_detect
         detections = [
-            d for d in detections
+            d for d in raw_detections
             if d.get('class_name', '').upper() != 'IC' or d.get('ic_confirmed', False)
         ]
-        # Update session state so Step 4 also works on the filtered list
-        st.session_state["pb_detections"] = detections
 
         st.markdown("## Step 3 — Annotated Preview")
         annotated = _draw_boxes(pil_image, detections)
