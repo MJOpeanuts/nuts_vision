@@ -42,17 +42,37 @@ if exist ".env" (
 )
 echo.
 
+REM Set default port if not configured
+if not defined STREAMLIT_PORT set STREAMLIT_PORT=8501
+
+REM Check if the port is available, try up to 10 consecutive ports
+set /a MAX_ATTEMPTS=10
+set /a ATTEMPT=0
+
+:check_port
+netstat -aon 2>nul | findstr /R ":%STREAMLIT_PORT% " | findstr "LISTENING" >nul 2>&1
+if %ERRORLEVEL% EQU 0 (
+    echo Port %STREAMLIT_PORT% is in use, trying next port...
+    set /a STREAMLIT_PORT+=1
+    set /a ATTEMPT+=1
+    if %ATTEMPT% LSS %MAX_ATTEMPTS% goto check_port
+    echo ERROR: Could not find an available port after %MAX_ATTEMPTS% attempts.
+    echo Please free port 8501 or set STREAMLIT_PORT in your .env file.
+    pause
+    exit /b 1
+)
+
 REM Launch Streamlit app
 echo ==========================================
 echo Starting nuts_vision Web Interface...
 echo ==========================================
 echo.
 echo The application will open in your browser at:
-echo http://localhost:8501
+echo http://localhost:%STREAMLIT_PORT%
 echo.
 echo Press Ctrl+C to stop the server
 echo.
 
-streamlit run app.py --server.port 8501 --server.address localhost
+streamlit run app.py --server.port %STREAMLIT_PORT% --server.address localhost
 
 pause
