@@ -118,18 +118,22 @@ else:
 if page == "\U0001f3e0 Home":
     st.markdown('<div class="main-header">\U0001f527 nuts_vision</div>', unsafe_allow_html=True)
     st.markdown("### IC Detection System")
-    st.markdown("""
-    Welcome to **nuts_vision** — an automated system for detecting integrated circuits (ICs) on electronic circuit boards.
+    st.markdown(r"""
+    Welcome to **nuts_vision** — an automated system for detecting electronic components on circuit boards.
 
-    #### \U0001f3af How it works:
+    #### 🎯 How it works:
     1. **Upload** a photo of an electronic circuit board
-    2. **Detect** — YOLOv8 identifies every IC on the board
-    3. **Crop** — each detected IC is saved as a separate image
-    4. **Browse** — all results are organized in a per-job folder
+    2. **Detect** — YOLOv8 identifies up to 16 component types on the board
+    3. **IC sub-classification** — a dedicated ic\_detect model classifies ICs by pin layout (four\_side, two\_side, without\_side)
+    4. **Crop** — each detected component is saved as a separate image
+    5. **Browse** — all results are organized in a per-job folder
 
-    #### \U0001f4cb Detected component:
+    #### 📋 Detected components (16 classes):
     """)
-    st.markdown("\u2713 IC (Integrated Circuit)")
+    _class_cols = st.columns(4)
+    for idx, cls in enumerate(COMP_DETECT_CLASSES):
+        with _class_cols[idx % 4]:
+            st.markdown(f"\u2713 {cls}")
 
     st.markdown("---")
     st.markdown("""
@@ -545,45 +549,27 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
             config = st.session_state.get("pb_detection_config", {})
             if st.session_state.get("db_connected", False):
                 try:
-                    with st.session_state.db.get_connection() as conn:
-                        with conn.cursor() as cur:
-                            cur.execute(
-                                """
-                                INSERT INTO log_pcba_pb_import
-                                    (image_storage_path, detection_config, total_detections, status)
-                                VALUES (%s, %s, %s, 'completed')
-                                RETURNING id
-                                """,
-                                (
-                                    img_name,
-                                    json.dumps(config),
-                                    len(saved_rows),
-                                )
-                            )
-                            import_id = cur.fetchone()[0]
+                    db = st.session_state.db
+                    import_id = db.create_pcba_import(
+                        image_storage_path=img_name,
+                        detection_config=config,
+                        total_detections=len(saved_rows),
+                        status="completed",
+                    )
 
-                        for row_data in saved_rows:
-                            with conn.cursor() as cur:
-                                cur.execute(
-                                    """
-                                    INSERT INTO log_pcba_pb_row_import
-                                        (log_pcba_pb_import_id, row_number, detection_type,
-                                         ic_subtype, detection_confidence, ic_confidence,
-                                         bounding_box, cropped_image_path, processing_status)
-                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                                    """,
-                                    (
-                                        import_id,
-                                        row_data["row_number"],
-                                        row_data["detection_type"],
-                                        row_data["ic_subtype"],
-                                        row_data["detection_confidence"],
-                                        row_data["ic_confidence"],
-                                        json.dumps(row_data["bounding_box"]),
-                                        row_data["cropped_image_path"],
-                                        row_data["processing_status"],
-                                    )
-                                )
+                    for row_data in saved_rows:
+                        db.log_pcba_row_import(
+                            import_id=import_id,
+                            row_number=row_data["row_number"],
+                            detection_type=row_data["detection_type"],
+                            detection_confidence=row_data["detection_confidence"],
+                            bounding_box=row_data["bounding_box"],
+                            ic_subtype=row_data["ic_subtype"],
+                            ic_confidence=row_data["ic_confidence"],
+                            cropped_image_path=row_data["cropped_image_path"],
+                            processing_status=row_data["processing_status"],
+                        )
+
                     st.info(f"\U0001f4be Session logged to database (import id: {import_id})")
                 except Exception as exc:
                     st.warning(f"Database logging failed: {exc}")
@@ -733,7 +719,8 @@ elif page == "\U0001f5c4\ufe0f Database Viewer":
     else:
         table_view = st.selectbox("Select Table",
             ["\U0001f4f8 Images Input", "\U0001f504 Jobs Log",
-             "\U0001f3af Detections", "\u2702\ufe0f Cropped Components"])
+             "\U0001f3af Detections", "\u2702\ufe0f Cropped Components",
+             "\U0001f4f7 PCBA Imports", "\U0001f4cb PCBA Detection Rows"])
 
         if st.button("\U0001f504 Refresh"):
             st.rerun()
@@ -811,6 +798,62 @@ elif page == "\U0001f5c4\ufe0f Database Viewer":
                 else:
                     st.info("No cropped components in database yet.")
 
+            elif table_view == "\U0001f4f7 PCBA Imports":
+                data = st.session_state.db.get_all_pcba_imports()
+                if data:
+                    df = pd.DataFrame(data)
+                    if "created_at" in df.columns:
+                        df["created_at"] = pd.to_datetime(df["created_at"]).dt.strftime("%Y-%m-%d %H:%M:%S")
+                    # Show detection_config as truncated string for readability
+                    if "detection_config" in df.columns:
+                        df["detection_config"] = df["detection_config"].apply(
+                            lambda v: json.dumps(v, ensure_ascii=False)[:80] + "…" if v else "—"
+                        )
+                    st.dataframe(df, use_container_width=True, height=400)
+                    st.caption(f"Total records: {len(df)}")
+
+                    if len(df) > 0:
+                        st.markdown("---")
+                        import_ids = df["id"].tolist()
+                        selected_import = st.selectbox("Inspect import session", import_ids)
+                        if selected_import:
+                            rows = st.session_state.db.get_pcba_import_rows(str(selected_import))
+                            if rows:
+                                st.dataframe(pd.DataFrame(rows), use_container_width=True, height=400)
+                            else:
+                                st.info("No detection rows for this import session.")
+                else:
+                    st.info("No PCBA imports in database yet.")
+
+            elif table_view == "\U0001f4cb PCBA Detection Rows":
+                imports = st.session_state.db.get_all_pcba_imports()
+                import_options = ["All Imports"] + [
+                    f"{imp['id']} — {imp.get('status', '')} ({imp.get('row_count', 0)} rows)"
+                    for imp in imports
+                ]
+                selected = st.selectbox("Filter by import session", import_options)
+                if selected == "All Imports":
+                    with st.session_state.db.get_connection() as conn:
+                        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                            cursor.execute(
+                                "SELECT * FROM log_pcba_pb_row_import ORDER BY created_at DESC LIMIT 200"
+                            )
+                            data = [dict(row) for row in cursor.fetchall()]
+                else:
+                    imp_id = selected.split(" — ")[0]
+                    data = st.session_state.db.get_pcba_import_rows(imp_id)
+                if data:
+                    df = pd.DataFrame(data)
+                    if "created_at" in df.columns:
+                        df["created_at"] = pd.to_datetime(df["created_at"]).dt.strftime("%Y-%m-%d %H:%M:%S")
+                    st.dataframe(df, use_container_width=True, height=400)
+                    st.caption(f"Total records: {len(df)}")
+                    if "detection_type" in df.columns:
+                        st.markdown("---")
+                        st.bar_chart(df["detection_type"].value_counts())
+                else:
+                    st.info("No PCBA detection rows in database yet.")
+
         except Exception as e:
             st.error(f"Error: {str(e)}")
             import traceback
@@ -850,6 +893,7 @@ elif page == "\U0001f4ca Statistics":
             st.markdown("---")
             recent_jobs = st.session_state.db.get_all_jobs(limit=10)
             if recent_jobs:
+                st.markdown("### Recent Jobs")
                 df_j = pd.DataFrame(recent_jobs)
                 for col in ["started_at", "ended_at"]:
                     if col in df_j.columns:
@@ -860,6 +904,37 @@ elif page == "\U0001f4ca Statistics":
             else:
                 st.info("No jobs recorded yet.")
 
+            # --- PCBA Photo Booth statistics ---
+            st.markdown("---")
+            st.markdown("### \U0001f4f7 PCBA Photo Booth")
+            try:
+                pcba_stats = st.session_state.db.get_pcba_statistics()
+                pcol1, pcol2, pcol3, pcol4 = st.columns(4)
+                with pcol1:
+                    st.metric("Imports", pcba_stats.get("total_imports", 0))
+                with pcol2:
+                    st.metric("Detections", pcba_stats.get("total_detections", 0))
+                with pcol3:
+                    st.metric("Completed", pcba_stats.get("completed", 0))
+                with pcol4:
+                    st.metric("Errors", pcba_stats.get("errors", 0))
+
+                pcba_counts = pcba_stats.get("component_counts", {})
+                if pcba_counts:
+                    df_pc = pd.DataFrame(
+                        list(pcba_counts.items()),
+                        columns=["Component", "Count"]
+                    ).sort_values("Count", ascending=False)
+                    col_left, col_right = st.columns([2, 1])
+                    with col_left:
+                        st.bar_chart(df_pc.set_index("Component"))
+                    with col_right:
+                        st.dataframe(df_pc, use_container_width=True)
+                else:
+                    st.info("No PCBA detection data yet.")
+            except Exception:
+                st.info("PCBA logging tables not available yet.")
+
         except Exception as e:
             st.error(f"Error: {str(e)}")
 
@@ -867,19 +942,24 @@ elif page == "\U0001f4ca Statistics":
 # ========== ABOUT PAGE ==========
 elif page == "\u2139\ufe0f About":
     st.markdown('<div class="main-header">\u2139\ufe0f About nuts_vision</div>', unsafe_allow_html=True)
-    st.markdown("""
-    ### \U0001f527 Electronic Component Detection System
+    st.markdown(r"""
+    ### 🔧 Electronic Component Detection System
 
-    **nuts_vision** analyses photos of electronic circuit boards, detects integrated circuits (ICs),
-    and produces cropped images of each detected IC.
+    **nuts_vision** analyses photos of electronic circuit boards, detects up to **16 component types**,
+    and produces cropped images of each detected component.
 
-    #### \U0001f3af Key Technologies:
-    - **YOLOv8**: IC detection (trained model: `best.pt`)
-    - **PostgreSQL** *(optional)*: logging
+    #### 🎯 Dual-Model Detection:
+    - **comp\_detect\_best\_v2**: detects 16 classes — IC, LED, battery, buzzer, capacitor, clock, connector, diode, display, fuse, inductor, potentiometer, relay, resistor, switch, transistor
+    - **ic\_detect\_best**: classifies ICs by pin layout — four\_side (4 rows of pins), two\_side (2 rows), without\_side (BGA/QFN)
+    - Results are cross-referenced via IoU matching for enhanced IC detection accuracy
+
+    #### 🛠️ Key Technologies:
+    - **YOLOv8**: component detection (ONNX & PyTorch models)
+    - **PostgreSQL** *(optional)*: logging & audit trail
     - **Streamlit**: web interface
-    - **OpenCV**: image processing
+    - **OpenCV**: image processing & cropping
 
-    #### \U0001f4c1 Job Folder Structure:
+    #### 📁 Job Folder Structure:
     ```
     jobs/
       <image_name>_<YYYYMMDD>_<HHMMSS>/
@@ -889,7 +969,7 @@ elif page == "\u2139\ufe0f About":
         metadata.json  — detection data
     ```
 
-    **Version**: 2.1.0 | **License**: CC BY 4.0
+    **Version**: 2.2.0 | **License**: CC BY 4.0
     """)
 
     st.markdown("---")
