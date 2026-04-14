@@ -369,6 +369,190 @@ class DatabaseManager:
                 result['component_counts'] = component_counts
                 return result
 
+    # ------------------------------------------------------------------
+    # PCBA Photo Booth logging (log_pcba_pb_import / log_pcba_pb_row_import)
+    # ------------------------------------------------------------------
+
+    def create_pcba_import(
+        self,
+        image_storage_path: str,
+        detection_config: Optional[dict] = None,
+        total_detections: int = 0,
+        status: str = "pending",
+        user_id: Optional[str] = None,
+        pcba_id: Optional[str] = None,
+        org_id: Optional[str] = None,
+    ) -> str:
+        """
+        Create a PCBA Photo Booth import session.
+
+        Returns:
+            UUID of the created import record.
+        """
+        import json as _json
+
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO log_pcba_pb_import
+                        (image_storage_path, detection_config, total_detections,
+                         status, user_id, pcba_id, org_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                    """,
+                    (
+                        image_storage_path,
+                        _json.dumps(detection_config) if detection_config else None,
+                        total_detections,
+                        status,
+                        user_id,
+                        pcba_id,
+                        org_id,
+                    ),
+                )
+                return str(cursor.fetchone()[0])
+
+    def update_pcba_import_status(
+        self,
+        import_id: str,
+        status: str,
+        total_detections: Optional[int] = None,
+    ) -> None:
+        """Update the status (and optionally total_detections) of a PCBA import."""
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                if total_detections is not None:
+                    cursor.execute(
+                        """
+                        UPDATE log_pcba_pb_import
+                        SET status = %s, total_detections = %s
+                        WHERE id = %s
+                        """,
+                        (status, total_detections, import_id),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        UPDATE log_pcba_pb_import
+                        SET status = %s
+                        WHERE id = %s
+                        """,
+                        (status, import_id),
+                    )
+
+    def log_pcba_row_import(
+        self,
+        import_id: str,
+        row_number: int,
+        detection_type: str,
+        detection_confidence: float,
+        bounding_box: dict,
+        ic_subtype: Optional[str] = None,
+        ic_confidence: Optional[float] = None,
+        cropped_image_path: Optional[str] = None,
+        processing_status: str = "pending",
+    ) -> str:
+        """
+        Log a single detected row within a PCBA import session.
+
+        Returns:
+            UUID of the created row record.
+        """
+        import json as _json
+
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO log_pcba_pb_row_import
+                        (log_pcba_pb_import_id, row_number, detection_type,
+                         ic_subtype, detection_confidence, ic_confidence,
+                         bounding_box, cropped_image_path, processing_status)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                    """,
+                    (
+                        import_id,
+                        row_number,
+                        detection_type,
+                        ic_subtype,
+                        detection_confidence,
+                        ic_confidence,
+                        _json.dumps(bounding_box),
+                        cropped_image_path,
+                        processing_status,
+                    ),
+                )
+                return str(cursor.fetchone()[0])
+
+    def get_all_pcba_imports(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """Return recent PCBA Photo Booth import sessions."""
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        p.*,
+                        COUNT(r.id) AS row_count
+                    FROM log_pcba_pb_import p
+                    LEFT JOIN log_pcba_pb_row_import r
+                        ON r.log_pcba_pb_import_id = p.id
+                    GROUP BY p.id
+                    ORDER BY p.created_at DESC
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
+                return [dict(row) for row in cursor.fetchall()]
+
+    def get_pcba_import_rows(
+        self, import_id: str, limit: int = 500
+    ) -> List[Dict[str, Any]]:
+        """Return all detection rows for a given PCBA import session."""
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT * FROM log_pcba_pb_row_import
+                    WHERE log_pcba_pb_import_id = %s
+                    ORDER BY row_number
+                    LIMIT %s
+                    """,
+                    (import_id, limit),
+                )
+                return [dict(row) for row in cursor.fetchall()]
+
+    def get_pcba_statistics(self) -> Dict[str, Any]:
+        """Return aggregate statistics from PCBA Photo Booth tables."""
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        COUNT(DISTINCT p.id)  AS total_imports,
+                        COALESCE(SUM(p.total_detections), 0) AS total_detections,
+                        COUNT(DISTINCT CASE WHEN p.status = 'completed' THEN p.id END) AS completed,
+                        COUNT(DISTINCT CASE WHEN p.status = 'error' THEN p.id END)     AS errors
+                    FROM log_pcba_pb_import p
+                    """
+                )
+                stats = dict(cursor.fetchone() or {})
+
+                cursor.execute(
+                    """
+                    SELECT detection_type, COUNT(*) AS count
+                    FROM log_pcba_pb_row_import
+                    GROUP BY detection_type
+                    ORDER BY count DESC
+                    """
+                )
+                stats["component_counts"] = {
+                    row["detection_type"]: row["count"]
+                    for row in cursor.fetchall()
+                }
+                return stats
+
 
 def get_db_manager_from_env() -> DatabaseManager:
     """

@@ -4,7 +4,7 @@ nuts_vision - Electronic Component Detection
 A computer vision system for automated electronic circuit board analysis.
 """
 
-__version__ = "2.0.0"
+__version__ = "2.2.0"
 __author__ = "nuts_vision contributors"
 
 from .detect import ComponentDetector
