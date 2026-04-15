@@ -46,6 +46,21 @@ COMP_DETECT_CLASSES = [
     'Pads', 'Pins', 'Resistor', 'Switch', 'Transistor'
 ]
 
+
+def _detect_model_formats(comp_base: str = "smd_comp", ic_base: str = "ic_detect_best",
+                           root: Path = None) -> list:
+    """Return list of available model format labels (e.g. ['ONNX (.onnx)', 'PT (.pt)'])
+    based on whether the *comp* model file exists in each format.
+    The ic_detect model is optional; it does not gate format availability."""
+    root = root or Path(".")
+    formats = []
+    if (root / f"{comp_base}.onnx").exists():
+        formats.append("ONNX (.onnx)")
+    if (root / f"{comp_base}.pt").exists():
+        formats.append("PT (.pt)")
+    return formats
+
+
 # Page configuration
 st.set_page_config(
     page_title="nuts_vision - IC Detector",
@@ -169,47 +184,43 @@ elif page == "\U0001f4e4 Upload & Process":
     st.markdown('<div class="main-header">\U0001f4e4 Upload & Process Images</div>', unsafe_allow_html=True)
 
     # Detect available model formats
-    _up_pt_exists = Path("smd_comp.pt").exists()
-    _up_onnx_exists = Path("smd_comp.onnx").exists()
-    _up_formats = []
-    if _up_pt_exists:
-        _up_formats.append("PT (.pt)")
-    if _up_onnx_exists:
-        _up_formats.append("ONNX (.onnx)")
+    _up_formats = _detect_model_formats(comp_base="smd_comp")
 
     if not _up_formats:
-        st.warning("""
-        \u26a0\ufe0f **No model found!**
+        st.error("""
+        \u274c **No model found!**
         Make sure `smd_comp.pt` or `smd_comp.onnx` is present in the project root directory.
         """)
+        model_path = None
+    else:
+        st.markdown("### Model Configuration")
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            if len(_up_formats) > 1:
+                _up_fmt = st.radio(
+                    "Model format",
+                    options=_up_formats,
+                    index=0,
+                    horizontal=True,
+                    help="Choose between PyTorch (.pt) and ONNX (.onnx) model format",
+                    key="up_model_format",
+                )
+            else:
+                _up_fmt = _up_formats[0]
+                st.text_input("Model format", value=_up_fmt, disabled=True, key="up_model_format_display")
 
-    st.markdown("### Model Configuration")
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        if len(_up_formats) > 1:
-            _up_fmt = st.radio(
-                "Model format",
-                options=_up_formats,
-                index=0,
-                horizontal=True,
-                help="Choose between PyTorch (.pt) and ONNX (.onnx) model format",
-                key="up_model_format",
-            )
-        elif _up_formats:
-            _up_fmt = _up_formats[0]
-            st.text_input("Model format", value=_up_fmt, disabled=True, key="up_model_format_display")
-        else:
-            _up_fmt = "PT (.pt)"
+            if "ONNX" in _up_fmt:
+                model_path = "smd_comp.onnx"
+            else:
+                model_path = "smd_comp.pt"
+            st.text_input("Model", value=model_path, disabled=True,
+                           help="smd_comp model — selected for component detection")
+        with col2:
+            conf_threshold = st.slider("Confidence Threshold", min_value=0.1, max_value=0.9,
+                                        value=0.25, step=0.05)
 
-        if "ONNX" in _up_fmt:
-            model_path = "smd_comp.onnx"
-        else:
-            model_path = "smd_comp.pt"
-        st.text_input("Model", value=model_path, disabled=True,
-                       help="smd_comp model — selected for component detection")
-    with col2:
-        conf_threshold = st.slider("Confidence Threshold", min_value=0.1, max_value=0.9,
-                                    value=0.25, step=0.05)
+    if model_path is None:
+        st.stop()
 
     st.markdown("### Class Filter")
     selected_classes = st.multiselect(
@@ -409,16 +420,11 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
     _project_root = Path(__file__).parent.resolve()
 
     # Detect available model formats
-    _pb_comp_pt = (_project_root / "smd_comp.pt").exists()
-    _pb_comp_onnx = (_project_root / "smd_comp.onnx").exists()
-    _pb_ic_onnx = (_project_root / "ic_detect_best.onnx").exists()
-    _pb_ic_pt = (_project_root / "ic_detect_best.pt").exists()
+    _pb_formats = _detect_model_formats(comp_base="smd_comp", root=_project_root)
 
-    _pb_formats = []
-    if _pb_comp_onnx or _pb_ic_onnx:
-        _pb_formats.append("ONNX (.onnx)")
-    if _pb_comp_pt or _pb_ic_pt:
-        _pb_formats.append("PT (.pt)")
+    if not _pb_formats:
+        st.error("⚠️ No smd_comp model files found in the project root.")
+        st.stop()
 
     if len(_pb_formats) > 1:
         _pb_fmt = st.radio(
@@ -429,12 +435,9 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
             help="Choose between ONNX and PyTorch (.pt) model format",
             key="pb_model_format",
         )
-    elif _pb_formats:
+    else:
         _pb_fmt = _pb_formats[0]
         st.info(f"Model format: **{_pb_fmt}** (only format available)")
-    else:
-        _pb_fmt = "ONNX (.onnx)"
-        st.warning("⚠️ No model files found in the project root.")
 
     if "ONNX" in _pb_fmt:
         comp_model_name = "smd_comp.onnx"
