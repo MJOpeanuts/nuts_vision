@@ -55,6 +55,7 @@ test/
 # Model weights (optionally ignore large model files)
 *.pt
 !yolov8*.pt
+!smd_comp.pt
 
 # Outputs
 outputs/
