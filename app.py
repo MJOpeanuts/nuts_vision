@@ -663,8 +663,8 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
             import cv2
             # Use the EXIF-corrected PIL image (already transposed above)
             # to produce a BGR numpy array consistent with detection results.
-            _pil_rgb = pil_image.convert("RGB")
-            cv_img = cv2.cvtColor(np.array(_pil_rgb), cv2.COLOR_RGB2BGR)
+            corrected_rgb = pil_image.convert("RGB")
+            cv_img = cv2.cvtColor(np.array(corrected_rgb), cv2.COLOR_RGB2BGR)
 
             # ---- Create job folder ----
             now = datetime.now()
@@ -686,7 +686,7 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
             # ---- Save EXIF-corrected input photo ----
             orig_suffix = Path(img_name).suffix or ".jpg"
             input_path = job_dir / f"input{orig_suffix}"
-            _pil_rgb.save(str(input_path), quality=95)
+            corrected_rgb.save(str(input_path), quality=95)
 
             # ---- Save annotated photo ----
             annotated_rgb = annotated.convert("RGB")

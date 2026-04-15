@@ -147,6 +147,7 @@ class ComponentDetector:
         output_dir: str = "outputs/results",
         apply_clahe: bool = False,
         apply_sharpen: bool = False,
+        image: Optional[np.ndarray] = None,
     ) -> List[dict]:
         """
         Detect components in an image.
@@ -158,12 +159,14 @@ class ComponentDetector:
             output_dir: Directory to save results
             apply_clahe: Whether to apply CLAHE contrast enhancement
             apply_sharpen: Whether to apply mild sharpening
+            image: Optional pre-loaded BGR image (skips file I/O if provided)
             
         Returns:
             List of detection dictionaries
         """
-        # Load image with EXIF orientation correction
-        image = load_image_with_exif(str(image_path))
+        # Use pre-loaded image or load from file with EXIF correction
+        if image is None:
+            image = load_image_with_exif(str(image_path))
         
         original_image = image.copy()
         

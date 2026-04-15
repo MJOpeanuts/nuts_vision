@@ -109,7 +109,8 @@ class ComponentAnalysisPipeline:
 
         detections = self.detector.detect_components(
             str(img_path),
-            save_visualization=False
+            save_visualization=False,
+            image=image,
         )
         print(f"  Detected {len(detections)} components")
 
