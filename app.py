@@ -184,7 +184,8 @@ elif page == "\U0001f4e4 Upload & Process":
     st.markdown('<div class="main-header">\U0001f4e4 Upload & Process Images</div>', unsafe_allow_html=True)
 
     # Detect available model formats
-    _up_formats = _detect_model_formats(comp_base="smd_comp")
+    _up_root = Path(__file__).parent.resolve()
+    _up_formats = _detect_model_formats(comp_base="smd_comp", root=_up_root)
 
     if not _up_formats:
         st.error("""
@@ -210,10 +211,10 @@ elif page == "\U0001f4e4 Upload & Process":
                 st.text_input("Model format", value=_up_fmt, disabled=True, key="up_model_format_display")
 
             if "ONNX" in _up_fmt:
-                model_path = "smd_comp.onnx"
+                model_path = str(_up_root / "smd_comp.onnx")
             else:
-                model_path = "smd_comp.pt"
-            st.text_input("Model", value=model_path, disabled=True,
+                model_path = str(_up_root / "smd_comp.pt")
+            st.text_input("Model", value=Path(model_path).name, disabled=True,
                            help="smd_comp model — selected for component detection")
         with col2:
             conf_threshold = st.slider("Confidence Threshold", min_value=0.1, max_value=0.9,
