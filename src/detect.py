@@ -10,7 +10,40 @@ import numpy as np
 from pathlib import Path
 from ultralytics import YOLO
 from typing import List, Tuple, Optional
+from PIL import Image, ImageOps
 import json
+
+
+def load_image_with_exif(image_path: str) -> np.ndarray:
+    """
+    Load an image with EXIF orientation correction.
+
+    PIL/Streamlit auto-rotate images according to EXIF orientation tags,
+    but OpenCV's ``cv2.imread`` ignores them.  This helper opens the file
+    with PIL, applies ``ImageOps.exif_transpose()`` so the pixel data
+    matches the visual orientation, then converts to a BGR numpy array
+    suitable for OpenCV processing.
+
+    Args:
+        image_path: Path to the image file.
+
+    Returns:
+        BGR numpy array with correct orientation.
+
+    Raises:
+        ValueError: If the image cannot be loaded.
+    """
+    try:
+        pil_img = Image.open(image_path)
+        pil_img = ImageOps.exif_transpose(pil_img)
+        # Ensure 3-channel RGB
+        pil_img = pil_img.convert("RGB")
+        # Convert to BGR numpy array for OpenCV
+        rgb_array = np.array(pil_img)
+        bgr_array = cv2.cvtColor(rgb_array, cv2.COLOR_RGB2BGR)
+        return bgr_array
+    except Exception as e:
+        raise ValueError(f"Could not load image: {image_path} — {e}")
 
 
 class ComponentDetector:
@@ -32,40 +65,89 @@ class ComponentDetector:
         image: np.ndarray,
         apply_blur: bool = True,
         blur_kernel: Tuple[int, int] = (5, 5),
-        detect_edges: bool = False
-    ) -> Tuple[np.ndarray, np.ndarray]:
+        detect_edges: bool = False,
+        apply_clahe: bool = False,
+        apply_sharpen: bool = False,
+        clahe_clip: float = 2.0,
+        clahe_grid: Tuple[int, int] = (8, 8),
+    ) -> Tuple[np.ndarray, Optional[np.ndarray]]:
         """
-        Preprocess image with Gaussian blur and edge detection.
-        
+        Preprocess image with optional blur, CLAHE contrast enhancement,
+        sharpening, and edge detection.
+
         Args:
             image: Input image (BGR format)
             apply_blur: Whether to apply Gaussian blur
             blur_kernel: Kernel size for Gaussian blur
             detect_edges: Whether to detect edges
-            
+            apply_clahe: Whether to apply CLAHE contrast enhancement
+            apply_sharpen: Whether to apply mild sharpening
+            clahe_clip: CLAHE clip limit (default 2.0)
+            clahe_grid: CLAHE tile grid size (default (8, 8))
+
         Returns:
             Tuple of (preprocessed_image, edge_map)
         """
         preprocessed = image.copy()
-        
+
         # Apply Gaussian blur to reduce noise
         if apply_blur:
             preprocessed = cv2.GaussianBlur(preprocessed, blur_kernel, 0)
-        
+
+        # CLAHE on the L channel in LAB colour space — improves local
+        # contrast and compensates for vignetting / uneven illumination
+        if apply_clahe:
+            preprocessed = self._apply_clahe(preprocessed, clahe_clip, clahe_grid)
+
+        # Mild sharpening to recover edge detail in peripheral zones
+        if apply_sharpen:
+            preprocessed = self._apply_sharpen(preprocessed)
+
         # Detect edges (optional, for visualization)
         edge_map = None
         if detect_edges:
             gray = cv2.cvtColor(preprocessed, cv2.COLOR_BGR2GRAY)
             edge_map = cv2.Canny(gray, 50, 150)
-        
+
         return preprocessed, edge_map
+
+    # ------------------------------------------------------------------
+    # Peripheral-detection helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _apply_clahe(
+        image: np.ndarray,
+        clip_limit: float = 2.0,
+        tile_grid: Tuple[int, int] = (8, 8),
+    ) -> np.ndarray:
+        """Apply CLAHE on the L channel of a LAB image."""
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+        l_chan, a_chan, b_chan = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid)
+        l_chan = clahe.apply(l_chan)
+        lab = cv2.merge([l_chan, a_chan, b_chan])
+        return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+
+    @staticmethod
+    def _apply_sharpen(image: np.ndarray) -> np.ndarray:
+        """Apply a mild unsharp-mask style sharpening kernel."""
+        kernel = np.array(
+            [[0, -1,  0],
+             [-1,  5, -1],
+             [0, -1,  0]], dtype=np.float32
+        )
+        return cv2.filter2D(image, -1, kernel)
     
     def detect_components(
         self, 
         image_path: str,
         preprocess: bool = True,
         save_visualization: bool = True,
-        output_dir: str = "outputs/results"
+        output_dir: str = "outputs/results",
+        apply_clahe: bool = False,
+        apply_sharpen: bool = False,
+        image: Optional[np.ndarray] = None,
     ) -> List[dict]:
         """
         Detect components in an image.
@@ -75,20 +157,26 @@ class ComponentDetector:
             preprocess: Whether to preprocess the image
             save_visualization: Whether to save annotated image
             output_dir: Directory to save results
+            apply_clahe: Whether to apply CLAHE contrast enhancement
+            apply_sharpen: Whether to apply mild sharpening
+            image: Optional pre-loaded BGR image (skips file I/O if provided)
             
         Returns:
             List of detection dictionaries
         """
-        # Load image
-        image = cv2.imread(str(image_path))
+        # Use pre-loaded image or load from file with EXIF correction
         if image is None:
-            raise ValueError(f"Could not load image: {image_path}")
+            image = load_image_with_exif(str(image_path))
         
         original_image = image.copy()
         
         # Preprocess if requested
         if preprocess:
-            image, edge_map = self.preprocess_image(image)
+            image, edge_map = self.preprocess_image(
+                image,
+                apply_clahe=apply_clahe,
+                apply_sharpen=apply_sharpen,
+            )
         
         # Run detection
         results = self.model(image, conf=self.conf_threshold, verbose=False)
@@ -238,7 +326,9 @@ class DualModelDetector:
     def detect(
         self,
         image_path: str,
-        class_filter: Optional[List[str]] = None
+        class_filter: Optional[List[str]] = None,
+        apply_clahe: bool = False,
+        apply_sharpen: bool = False,
     ) -> List[dict]:
         """
         Run dual-model inference and return a unified detection list.
@@ -254,20 +344,24 @@ class DualModelDetector:
             class_id          (int)
 
         Args:
-            image_path:   Path to the PCB image
-            class_filter: Optional list of class names to keep (e.g. ['IC', 'capacitor'])
-                          If None or empty, all 13 classes are returned.
+            image_path:    Path to the PCB image
+            class_filter:  Optional list of class names to keep (e.g. ['IC', 'capacitor'])
+                           If None or empty, all 13 classes are returned.
+            apply_clahe:   Whether to apply CLAHE contrast enhancement
+            apply_sharpen: Whether to apply mild sharpening
         """
         # --- 1. comp_detect (always run) ---
         comp_dets = self.comp_detector.detect_components(
-            image_path, save_visualization=False
+            image_path, save_visualization=False,
+            apply_clahe=apply_clahe, apply_sharpen=apply_sharpen,
         )
 
         # --- 2. ic_detect (optional) ---
         ic_dets: List[dict] = []
         if self.ic_detector is not None:
             ic_dets = self.ic_detector.detect_components(
-                image_path, save_visualization=False
+                image_path, save_visualization=False,
+                apply_clahe=apply_clahe, apply_sharpen=apply_sharpen,
             )
 
         # --- 3. Cross-reference ICs ---

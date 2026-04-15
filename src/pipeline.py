@@ -8,14 +8,13 @@ the annotated result photo, all cropped components, and a JSON metadata file.
 
 import argparse
 import json
-import shutil
 from datetime import datetime
 from pathlib import Path
 import sys
 import cv2
 
 # Import our modules
-from detect import ComponentDetector
+from detect import ComponentDetector, load_image_with_exif
 from crop import ComponentCropper
 
 # Import database module if available
@@ -98,19 +97,20 @@ class ComponentAnalysisPipeline:
         print(f"Output folder: {job_dir}")
         print("="*60)
 
-        # --- Copy input photo ---
+        # --- Copy input photo (EXIF-corrected so it matches what the viewer shows) ---
         input_copy = job_dir / f"input{img_path.suffix}"
-        shutil.copy2(str(img_path), str(input_copy))
 
         # --- Detection ---
         print("\n[STEP 1/2] Detecting components...")
-        image = cv2.imread(str(img_path))
-        if image is None:
-            raise ValueError(f"Could not load image: {img_path}")
+        image = load_image_with_exif(str(img_path))
+
+        # Save the EXIF-corrected input copy for consistency with the viewer
+        cv2.imwrite(str(input_copy), image)
 
         detections = self.detector.detect_components(
             str(img_path),
-            save_visualization=False
+            save_visualization=False,
+            image=image,
         )
         print(f"  Detected {len(detections)} components")
 
