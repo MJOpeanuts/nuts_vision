@@ -172,7 +172,7 @@ class ComponentDetector:
 
 class DualModelDetector:
     """
-    Dual-model detector that combines comp_detect_best_v2 and ic_detect_best
+    Dual-model detector that combines smd_comp and ic_detect_best
     for enhanced IC detection with visual sub-type classification.
 
     Cross-referencing rules (IoU threshold = 0.5):
@@ -185,9 +185,9 @@ class DualModelDetector:
     IOU_THRESHOLD = 0.5
 
     COMP_DETECT_CLASSES = [
-        'IC', 'LED', 'battery', 'buzzer', 'capacitor', 'clock',
-        'connector', 'diode', 'display', 'fuse', 'inductor',
-        'potentiometer', 'relay', 'resistor', 'switch', 'transistor'
+        'Button', 'Capacitor', 'Connector', 'Diode',
+        'Electrolytic Capacitor', 'IC', 'Inductor', 'Led',
+        'Pads', 'Pins', 'Resistor', 'Switch', 'Transistor'
     ]
     IC_SUBTYPES = ['four_side', 'two_side', 'without_side']
 
@@ -200,7 +200,7 @@ class DualModelDetector:
     ):
         """
         Args:
-            comp_model_path: Path to comp_detect_best_v2 model (.onnx or .pt)
+            comp_model_path: Path to smd_comp model (.onnx or .pt)
             ic_model_path:   Path to ic_detect_best model (.onnx or .pt), optional
             comp_conf:       Confidence threshold for comp_detect
             ic_conf:         Confidence threshold for ic_detect
@@ -256,7 +256,7 @@ class DualModelDetector:
         Args:
             image_path:   Path to the PCB image
             class_filter: Optional list of class names to keep (e.g. ['IC', 'capacitor'])
-                          If None or empty, all 16 classes are returned.
+                          If None or empty, all 13 classes are returned.
         """
         # --- 1. comp_detect (always run) ---
         comp_dets = self.comp_detector.detect_components(

@@ -53,7 +53,7 @@ def test_image(model_path: str, image_path: str, conf_threshold: float = 0.25):
     if not Path(model_path).exists():
         print(f"❌ Erreur: Modèle introuvable / Model not found: {model_path}")
         print()
-        print("💡 Placez best.pt dans le répertoire racine du projet / Place best.pt in the project root directory.")
+        print("💡 Placez smd_comp.pt dans le répertoire racine du projet / Place smd_comp.pt in the project root directory.")
         return False
     
     if not Path(image_path).exists():
@@ -140,7 +140,7 @@ def test_image(model_path: str, image_path: str, conf_threshold: float = 0.25):
         print()
         print("   2. Pour une analyse complète avec le pipeline:")
         print("      For full analysis with pipeline:")
-        print("      python src/pipeline.py --model best.pt --image", image_path)
+        print("      python src/pipeline.py --model smd_comp.pt --image", image_path)
         print()
         
         return True
@@ -159,11 +159,11 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Exemples / Examples:
-  # Test avec best.pt / Test with best.pt
-  python test_simple.py --model best.pt --image ma_carte.jpg
+  # Test avec smd_comp.pt / Test with smd_comp.pt
+  python test_simple.py --model smd_comp.pt --image ma_carte.jpg
   
   # Avec seuil de confiance ajusté / With adjusted confidence threshold
-  python test_simple.py --model best.pt --image photo.jpg --conf 0.3
+  python test_simple.py --model smd_comp.pt --image photo.jpg --conf 0.3
   
   # Afficher l'aide / Show help
   python test_simple.py --help
