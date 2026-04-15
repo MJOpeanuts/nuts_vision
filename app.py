@@ -46,6 +46,21 @@ COMP_DETECT_CLASSES = [
     'Pads', 'Pins', 'Resistor', 'Switch', 'Transistor'
 ]
 
+
+def _detect_model_formats(comp_base: str = "smd_comp", ic_base: str = "ic_detect_best",
+                           root: Path = None) -> list:
+    """Return list of available model format labels (e.g. ['ONNX (.onnx)', 'PT (.pt)'])
+    based on whether the *comp* model file exists in each format.
+    The ic_detect model is optional; it does not gate format availability."""
+    root = root or Path(".")
+    formats = []
+    if (root / f"{comp_base}.onnx").exists():
+        formats.append("ONNX (.onnx)")
+    if (root / f"{comp_base}.pt").exists():
+        formats.append("PT (.pt)")
+    return formats
+
+
 # Page configuration
 st.set_page_config(
     page_title="nuts_vision - IC Detector",
@@ -168,24 +183,44 @@ if page == "\U0001f3e0 Home":
 elif page == "\U0001f4e4 Upload & Process":
     st.markdown('<div class="main-header">\U0001f4e4 Upload & Process Images</div>', unsafe_allow_html=True)
 
-    default_model_path = "smd_comp.pt"
-    model_exists = Path(default_model_path).exists()
+    # Detect available model formats
+    _up_formats = _detect_model_formats(comp_base="smd_comp")
 
-    if not model_exists:
-        st.warning("""
-        \u26a0\ufe0f **Model not found!**
-        Make sure `smd_comp.pt` is present in the project root directory.
+    if not _up_formats:
+        st.error("""
+        \u274c **No model found!**
+        Make sure `smd_comp.pt` or `smd_comp.onnx` is present in the project root directory.
         """)
+        model_path = None
+    else:
+        st.markdown("### Model Configuration")
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            if len(_up_formats) > 1:
+                _up_fmt = st.radio(
+                    "Model format",
+                    options=_up_formats,
+                    index=0,
+                    horizontal=True,
+                    help="Choose between PyTorch (.pt) and ONNX (.onnx) model format",
+                    key="up_model_format",
+                )
+            else:
+                _up_fmt = _up_formats[0]
+                st.text_input("Model format", value=_up_fmt, disabled=True, key="up_model_format_display")
 
-    st.markdown("### Model Configuration")
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        st.text_input("Model", value="smd_comp.pt", disabled=True,
-                       help="smd_comp model — forced for component detection")
-        model_path = default_model_path
-    with col2:
-        conf_threshold = st.slider("Confidence Threshold", min_value=0.1, max_value=0.9,
-                                    value=0.25, step=0.05)
+            if "ONNX" in _up_fmt:
+                model_path = "smd_comp.onnx"
+            else:
+                model_path = "smd_comp.pt"
+            st.text_input("Model", value=model_path, disabled=True,
+                           help="smd_comp model — selected for component detection")
+        with col2:
+            conf_threshold = st.slider("Confidence Threshold", min_value=0.1, max_value=0.9,
+                                        value=0.25, step=0.05)
+
+    if model_path is None:
+        st.stop()
 
     st.markdown("### Class Filter")
     selected_classes = st.multiselect(
@@ -384,19 +419,42 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
 
     _project_root = Path(__file__).parent.resolve()
 
-    # Forced model names
-    comp_model_name = "smd_comp.onnx"
-    ic_model_name = "ic_detect_best.onnx"
+    # Detect available model formats
+    _pb_formats = _detect_model_formats(comp_base="smd_comp", root=_project_root)
+
+    if not _pb_formats:
+        st.error("⚠️ No smd_comp model files found in the project root.")
+        st.stop()
+
+    if len(_pb_formats) > 1:
+        _pb_fmt = st.radio(
+            "Model format",
+            options=_pb_formats,
+            index=0,
+            horizontal=True,
+            help="Choose between ONNX and PyTorch (.pt) model format",
+            key="pb_model_format",
+        )
+    else:
+        _pb_fmt = _pb_formats[0]
+        st.info(f"Model format: **{_pb_fmt}** (only format available)")
+
+    if "ONNX" in _pb_fmt:
+        comp_model_name = "smd_comp.onnx"
+        ic_model_name = "ic_detect_best.onnx"
+    else:
+        comp_model_name = "smd_comp.pt"
+        ic_model_name = "ic_detect_best.pt"
 
     col_m1, col_m2 = st.columns(2)
     with col_m1:
         st.text_input("smd_comp model", value=comp_model_name, disabled=True,
-                       help="smd_comp model — forced for component detection",
+                       help="smd_comp model — selected for component detection",
                        key="pb_comp_model")
         comp_conf = st.slider("smd_comp confidence", 0.1, 0.9, 0.25, 0.05, key="pb_comp_conf")
     with col_m2:
         st.text_input("ic_detect model", value=ic_model_name, disabled=True,
-                       help="ic_detect_best model — forced for IC sub-classification",
+                       help="ic_detect_best model — selected for IC sub-classification",
                        key="pb_ic_model")
         ic_conf = st.slider("ic_detect confidence", 0.1, 0.9, 0.25, 0.05, key="pb_ic_conf")
 
@@ -468,7 +526,7 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
                     st.code(traceback.format_exc())
 
     # ------------------------------------------------------------------
-    # STEP 3 — Show annotated image
+    # STEP 3 — Interactive annotated preview
     # ------------------------------------------------------------------
     if "pb_detections" in st.session_state:
         raw_detections: list = st.session_state["pb_detections"]
@@ -480,19 +538,49 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
         ]
 
         st.markdown("## Step 3 — Annotated Preview")
-        annotated = _draw_boxes(pil_image, detections)
-        st.image(annotated, caption="Detected components", width="stretch")
+        st.markdown(
+            "Toggle component classes on/off to show or hide them on the image."
+        )
 
-        # Color legend
+        # Identify which classes are present in detections
         detected_types = sorted({d.get('class_name', '?') for d in detections})
-        if detected_types:
-            legend_html = " ".join(
-                f'<span style="display:inline-block;margin:2px 6px;padding:2px 8px;'
-                f'background:{DETECTION_PALETTE.get(t, "#888")};color:#fff;'
-                f'border-radius:4px;font-size:0.85rem;">{t}</span>'
-                for t in detected_types
-            )
-            st.markdown(legend_html, unsafe_allow_html=True)
+
+        # Per-class toggle checkboxes — two-column layout: toggles | image
+        col_toggles, col_image = st.columns([1, 4])
+        with col_toggles:
+            st.markdown("**Show / Hide**")
+            visible_classes = set()
+            for cls in detected_types:
+                count = sum(1 for d in detections if d.get('class_name') == cls)
+                is_visible = st.checkbox(
+                    f"{cls} ({count})",
+                    value=True,
+                    key=f"pb_cls_toggle_{cls}",
+                    help=f"Show/hide all {cls} detections",
+                )
+                if is_visible:
+                    visible_classes.add(cls)
+
+        # Filter detections to only visible classes
+        visible_detections = [
+            d for d in detections
+            if d.get('class_name', '?') in visible_classes
+        ]
+
+        with col_image:
+            annotated = _draw_boxes(pil_image, visible_detections)
+            st.image(annotated, caption="Detected components", width="stretch")
+
+            # Color legend (only for visible classes)
+            visible_types = sorted(visible_classes & set(detected_types))
+            if visible_types:
+                legend_html = " ".join(
+                    f'<span style="display:inline-block;margin:2px 6px;padding:2px 8px;'
+                    f'background:{DETECTION_PALETTE.get(t, "#888")};color:#fff;'
+                    f'border-radius:4px;font-size:0.85rem;">{t}</span>'
+                    for t in visible_types
+                )
+                st.markdown(legend_html, unsafe_allow_html=True)
 
         # ------------------------------------------------------------------
         # STEP 4 — User validation (editable detection list)
@@ -1099,5 +1187,11 @@ elif page == "\u2139\ufe0f About":
         st.markdown("**Environment:**")
         st.text(f"Python: {sys.version.split()[0]}")
         st.text(f"Streamlit: {st.__version__}")
-        default_model = Path("smd_comp.pt")
-        st.text("Model: \u2705 Found" if default_model.exists() else "Model: \u274c Not found (smd_comp.pt missing)")
+        _about_models = {
+            "smd_comp.pt": Path("smd_comp.pt").exists(),
+            "smd_comp.onnx": Path("smd_comp.onnx").exists(),
+            "ic_detect_best.onnx": Path("ic_detect_best.onnx").exists(),
+            "ic_detect_best.pt": Path("ic_detect_best.pt").exists(),
+        }
+        for model_name, found in _about_models.items():
+            st.text(f"{model_name}: {'✅ Found' if found else '❌ Not found'}")
