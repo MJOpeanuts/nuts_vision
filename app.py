@@ -16,7 +16,7 @@ from pathlib import Path
 import pandas as pd
 from datetime import datetime
 import os
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 import json
 import numpy as np
 
@@ -300,7 +300,9 @@ elif page == "\U0001f4e4 Upload & Process":
         cols = st.columns(min(3, len(uploaded_files)))
         for idx, uploaded_file in enumerate(uploaded_files[:6]):
             with cols[idx % 3]:
-                st.image(Image.open(uploaded_file), caption=uploaded_file.name, width="stretch")
+                _preview = Image.open(uploaded_file)
+                _preview = ImageOps.exif_transpose(_preview)
+                st.image(_preview, caption=uploaded_file.name, width="stretch")
 
 
 
@@ -401,6 +403,9 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
     img_bytes = st.session_state["pb_image_bytes"]
     img_name  = st.session_state["pb_image_name"]
     pil_image = Image.open(io.BytesIO(img_bytes))
+    # Apply EXIF orientation so the displayed image matches what the
+    # detection pipeline sees (OpenCV ignores EXIF tags).
+    pil_image = ImageOps.exif_transpose(pil_image)
 
     st.image(pil_image, caption=img_name, width="stretch")
 
@@ -475,6 +480,23 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
         key="pb_class_filter"
     )
 
+    st.markdown("### Image Preprocessing")
+    col_pp1, col_pp2 = st.columns(2)
+    with col_pp1:
+        pb_apply_clahe = st.checkbox(
+            "CLAHE contrast enhancement",
+            value=True,
+            key="pb_apply_clahe",
+            help="Adaptive histogram equalization — improves contrast in dark peripheral zones (vignetting).",
+        )
+    with col_pp2:
+        pb_apply_sharpen = st.checkbox(
+            "Sharpening",
+            value=False,
+            key="pb_apply_sharpen",
+            help="Mild unsharp-mask kernel — recovers edge detail lost to optical blur at the frame edges.",
+        )
+
     run_inference = st.button("\U0001f50d Run Detection", type="primary",
                               disabled=not _comp_model_path.exists())
 
@@ -509,7 +531,9 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
                     )
                     detections = detector.detect(
                         str(tmp_path),
-                        class_filter=selected_classes if selected_classes else None
+                        class_filter=selected_classes if selected_classes else None,
+                        apply_clahe=pb_apply_clahe,
+                        apply_sharpen=pb_apply_sharpen,
                     )
                     st.session_state["pb_detections"] = detections
                     st.session_state["pb_detection_config"] = {
@@ -637,7 +661,10 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
         if st.button("\u2702\ufe0f Confirm & Generate Crops", type="primary",
                      disabled=len(kept_rows) == 0):
             import cv2
-            cv_img = cv2.imdecode(np.frombuffer(img_bytes, np.uint8), cv2.IMREAD_COLOR)
+            # Use the EXIF-corrected PIL image (already transposed above)
+            # to produce a BGR numpy array consistent with detection results.
+            _pil_rgb = pil_image.convert("RGB")
+            cv_img = cv2.cvtColor(np.array(_pil_rgb), cv2.COLOR_RGB2BGR)
 
             # ---- Create job folder ----
             now = datetime.now()
@@ -656,10 +683,10 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
             job_dir.mkdir(parents=True, exist_ok=True)
             crops_dir.mkdir(exist_ok=True)
 
-            # ---- Save original photo ----
+            # ---- Save EXIF-corrected input photo ----
             orig_suffix = Path(img_name).suffix or ".jpg"
             input_path = job_dir / f"input{orig_suffix}"
-            input_path.write_bytes(img_bytes)
+            _pil_rgb.save(str(input_path), quality=95)
 
             # ---- Save annotated photo ----
             annotated_rgb = annotated.convert("RGB")
