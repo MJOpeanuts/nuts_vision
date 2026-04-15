@@ -16,8 +16,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application files
 COPY app.py .
 COPY src/ ./src/
-COPY best.pt .
-COPY best.onnx .
+COPY smd_comp.pt .
+COPY smd_comp.onnx .
+COPY ic_detect_best.onnx .
 
 # Expose Streamlit default port
 EXPOSE 8501

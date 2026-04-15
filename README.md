@@ -1,18 +1,19 @@
 # nuts_vision
 
-Automated IC detector for electronic circuit boards — upload a photo of a PCB, detect every integrated circuit (IC) with YOLOv8, crop each one individually, and browse the results through a Streamlit web interface.
+Automated electronic component detector for circuit boards — upload a photo of a PCB, detect components with YOLOv8 using dual-model inference (`smd_comp` + `ic_detect`), crop each one individually, and browse the results through a Streamlit web interface.
 
 ## What the application does
 
 1. **Upload** one or more PCB photos via the web interface.
-2. **Detect** — a YOLOv8 model (`best.pt`) identifies every IC on the board.
-3. **Crop** — each detected IC is saved as a separate image.
-4. **Browse** — every analysis is stored as a *job* (its own folder) that you can review in the **Job Viewer** page.
-5. **Log** *(optional)* — all results can be stored in a PostgreSQL database for later querying and statistics.
+2. **Detect** — the `smd_comp` YOLOv8 model identifies 13 component types on the board (Button, Capacitor, Connector, Diode, Electrolytic Capacitor, IC, Inductor, Led, Pads, Pins, Resistor, Switch, Transistor).
+3. **IC sub-classification** — the `ic_detect` model classifies ICs by pin layout (`four_side`, `two_side`, `without_side`).
+4. **Crop** — each detected component is saved as a separate image.
+5. **Browse** — every analysis is stored as a *job* (its own folder) that you can review in the **Job Viewer** page.
+6. **Log** *(optional)* — all results can be stored in a PostgreSQL database for later querying and statistics.
 
-### Detected component class
+### Detected component classes (13)
 
-**IC (Integrated Circuit)** — the model was specifically trained to detect ICs on PCB images.
+Button, Capacitor, Connector, Diode, Electrolytic Capacitor, IC, Inductor, Led, Pads, Pins, Resistor, Switch, Transistor
 
 ---
 
@@ -21,8 +22,9 @@ Automated IC detector for electronic circuit boards — upload a photo of a PCB,
 ```
 nuts_vision/
 ├── app.py                  # Streamlit web interface (main entry point)
-├── best.pt                 # Trained YOLOv8 model (IC detection)
-├── best.onnx               # ONNX export (deployment: Raspberry Pi, web, etc.)
+├── smd_comp.pt             # Trained YOLOv8 model (component detection, 13 classes)
+├── smd_comp.onnx           # ONNX export (deployment: Raspberry Pi, web, etc.)
+├── ic_detect_best.onnx     # IC sub-classification model (four_side, two_side, without_side)
 ├── requirements.txt        # Python dependencies
 ├── .env.example            # Example environment variables
 ├── docker-compose.yml      # PostgreSQL container (optional)
@@ -32,7 +34,7 @@ nuts_vision/
 ├── README.md               # This file
 ├── src/
 │   ├── pipeline.py         # Full detect + crop pipeline
-│   ├── detect.py           # IC detector (YOLOv8 wrapper)
+│   ├── detect.py           # Component detector + DualModelDetector (YOLOv8 wrapper)
 │   ├── crop.py             # Component cropper
 │   ├── visualize.py        # Visualization utilities
 │   └── database.py         # PostgreSQL logging (optional)
@@ -110,13 +112,13 @@ Open your browser at **http://localhost:8501**.
 
 ```bash
 # Process a single image
-python src/pipeline.py --model best.pt --image path/to/board.jpg
+python src/pipeline.py --model smd_comp.pt --image path/to/board.jpg
 
 # Process a whole directory
-python src/pipeline.py --model best.pt --image-dir path/to/images/
+python src/pipeline.py --model smd_comp.pt --image-dir path/to/images/
 
 # With database logging
-python src/pipeline.py --model best.pt --image path/to/board.jpg --use-database
+python src/pipeline.py --model smd_comp.pt --image path/to/board.jpg --use-database
 ```
 
 ---
@@ -161,13 +163,14 @@ The `.env` variables used:
 
 ---
 
-## YOLO model
+## YOLO models
 
-The detection model is a **YOLOv8** model specifically trained to detect **integrated circuits (ICs)** on PCB images.
+The detection system uses a **dual-model** approach:
 
-Two model formats are included:
-- **`best.pt`** — PyTorch native model for local inference with Python
-- **`best.onnx`** — Universal ONNX format optimised for deployment (Raspberry Pi, web, Supabase, etc.)
+1. **`smd_comp.pt` / `smd_comp.onnx`** — YOLOv8 model trained to detect **13 component types** on PCB images (Button, Capacitor, Connector, Diode, Electrolytic Capacitor, IC, Inductor, Led, Pads, Pins, Resistor, Switch, Transistor)
+2. **`ic_detect_best.onnx`** — YOLOv8 model for IC sub-classification by pin layout (`four_side`, `two_side`, `without_side`)
+
+Both models are forced in the web interface — no manual model selection is needed.
 
 ---
 

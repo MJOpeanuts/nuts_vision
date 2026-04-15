@@ -39,11 +39,11 @@ try:
 except ImportError:
     DUAL_DETECTOR_AVAILABLE = False
 
-# All 16 component classes for comp_detect_best_v2
+# All 13 component classes for smd_comp
 COMP_DETECT_CLASSES = [
-    'IC', 'LED', 'battery', 'buzzer', 'capacitor', 'clock',
-    'connector', 'diode', 'display', 'fuse', 'inductor',
-    'potentiometer', 'relay', 'resistor', 'switch', 'transistor'
+    'Button', 'Capacitor', 'Connector', 'Diode',
+    'Electrolytic Capacitor', 'IC', 'Inductor', 'Led',
+    'Pads', 'Pins', 'Resistor', 'Switch', 'Transistor'
 ]
 
 # Page configuration
@@ -123,12 +123,12 @@ if page == "\U0001f3e0 Home":
 
     #### 🎯 How it works:
     1. **Upload** a photo of an electronic circuit board
-    2. **Detect** — YOLOv8 identifies up to 16 component types on the board
+    2. **Detect** — YOLOv8 identifies up to 13 component types on the board using `smd_comp`
     3. **IC sub-classification** — a dedicated `ic_detect` model classifies ICs by pin layout (`four_side`, `two_side`, `without_side`)
     4. **Crop** — each detected component is saved as a separate image
     5. **Browse** — all results are organized in a per-job folder
 
-    #### 📋 Detected components (16 classes):
+    #### 📋 Detected components (13 classes):
     """)
     _class_cols = st.columns(4)
     for idx, cls in enumerate(COMP_DETECT_CLASSES):
@@ -168,20 +168,21 @@ if page == "\U0001f3e0 Home":
 elif page == "\U0001f4e4 Upload & Process":
     st.markdown('<div class="main-header">\U0001f4e4 Upload & Process Images</div>', unsafe_allow_html=True)
 
-    default_model_path = "best.pt"
+    default_model_path = "smd_comp.pt"
     model_exists = Path(default_model_path).exists()
 
     if not model_exists:
         st.warning("""
         \u26a0\ufe0f **Model not found!**
-        Make sure `best.pt` is present in the project root directory.
+        Make sure `smd_comp.pt` is present in the project root directory.
         """)
 
     st.markdown("### Model Configuration")
     col1, col2 = st.columns([3, 1])
     with col1:
-        model_path = st.text_input("Model Path", value=default_model_path if model_exists else "",
-                                    help="Path to the trained YOLO model (best.pt)")
+        st.text_input("Model", value="smd_comp.pt", disabled=True,
+                       help="smd_comp model — forced for component detection")
+        model_path = default_model_path
     with col2:
         conf_threshold = st.slider("Confidence Threshold", min_value=0.1, max_value=0.9,
                                     value=0.25, step=0.05)
@@ -191,7 +192,7 @@ elif page == "\U0001f4e4 Upload & Process":
         "Classes to detect (leave empty = detect all)",
         options=COMP_DETECT_CLASSES,
         default=[],
-        help="Select which component types to include in the results. Empty means all 16 classes."
+        help="Select which component types to include in the results. Empty means all 13 classes."
     )
 
     st.markdown("### Upload Images")
@@ -282,12 +283,11 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
     # Helper: draw bounding boxes with semi-transparent filled zones
     # ------------------------------------------------------------------
     DETECTION_PALETTE = {
-        'IC': '#FF5733', 'LED': '#33FF57', 'battery': '#3357FF',
-        'buzzer': '#FF33A8', 'capacitor': '#33FFF5', 'clock': '#FFD700',
-        'connector': '#A833FF', 'diode': '#FF8C00', 'display': '#00CED1',
-        'fuse': '#8B4513', 'inductor': '#32CD32', 'potentiometer': '#FF1493',
-        'relay': '#1E90FF', 'resistor': '#FF6347', 'switch': '#7CFC00',
-        'transistor': '#DC143C',
+        'Button': '#FF5733', 'Capacitor': '#33FFF5', 'Connector': '#A833FF',
+        'Diode': '#FF8C00', 'Electrolytic Capacitor': '#1E90FF',
+        'IC': '#FF33A8', 'Inductor': '#32CD32', 'Led': '#33FF57',
+        'Pads': '#FFD700', 'Pins': '#00CED1', 'Resistor': '#FF6347',
+        'Switch': '#7CFC00', 'Transistor': '#DC143C',
     }
 
     def _hex_to_rgba(hex_color: str, alpha: int = 60):
@@ -383,59 +383,50 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
     st.markdown("## Step 2 — Detection Configuration")
 
     _project_root = Path(__file__).parent.resolve()
-    _model_files = sorted(
-        [p for p in _project_root.iterdir()
-         if p.is_file() and p.suffix in (".onnx", ".pt")]
-    )
-    _model_names = [p.name for p in _model_files]
+
+    # Forced model names
+    comp_model_name = "smd_comp.onnx"
+    ic_model_name = "ic_detect_best.onnx"
 
     col_m1, col_m2 = st.columns(2)
     with col_m1:
-        comp_model_name = st.selectbox(
-            "comp_detect model",
-            options=_model_names,
-            index=_model_names.index("comp_detect_best_v2.onnx") if "comp_detect_best_v2.onnx" in _model_names else 0,
-            help="comp_detect_best_v2 model (.onnx or .pt) — must be in the project root",
-            key="pb_comp_model"
-        ) if _model_names else None
-        comp_conf = st.slider("comp_detect confidence", 0.1, 0.9, 0.25, 0.05, key="pb_comp_conf")
+        st.text_input("smd_comp model", value=comp_model_name, disabled=True,
+                       help="smd_comp model — forced for component detection",
+                       key="pb_comp_model")
+        comp_conf = st.slider("smd_comp confidence", 0.1, 0.9, 0.25, 0.05, key="pb_comp_conf")
     with col_m2:
-        _ic_model_options = ["(none)"] + _model_names
-        _ic_default = "ic_detect_best.onnx" if "ic_detect_best.onnx" in _model_names else "(none)"
-        ic_model_name = st.selectbox(
-            "ic_detect model (optional)",
-            options=_ic_model_options,
-            index=_ic_model_options.index(_ic_default),
-            help="ic_detect_best model (.onnx or .pt) — leave as (none) to skip IC sub-classification",
-            key="pb_ic_model"
-        )
+        st.text_input("ic_detect model", value=ic_model_name, disabled=True,
+                       help="ic_detect_best model — forced for IC sub-classification",
+                       key="pb_ic_model")
         ic_conf = st.slider("ic_detect confidence", 0.1, 0.9, 0.25, 0.05, key="pb_ic_conf")
 
-    if not _model_names:
-        st.warning("No .onnx or .pt model files found in the project root.")
+    # Check model files exist
+    _comp_model_path = _project_root / comp_model_name
+    _ic_model_path = _project_root / ic_model_name
+    if not _comp_model_path.exists():
+        st.warning(f"⚠️ smd_comp model not found: {comp_model_name}")
+    if not _ic_model_path.exists():
+        st.warning(f"⚠️ ic_detect model not found: {ic_model_name}")
 
     st.markdown("### Classes to detect")
     selected_classes = st.multiselect(
-        "Select component types (empty = all 16)",
+        "Select component types (empty = all 13)",
         options=COMP_DETECT_CLASSES,
         default=COMP_DETECT_CLASSES,
         key="pb_class_filter"
     )
 
     run_inference = st.button("\U0001f50d Run Detection", type="primary",
-                              disabled=not _model_names or not comp_model_name)
+                              disabled=not _comp_model_path.exists())
 
     if run_inference:
         import uuid as _uuid
         # Use only server-side paths resolved from the project root
-        comp_model_resolved = (_project_root / comp_model_name).resolve()
-        ic_model_resolved = (
-            (_project_root / ic_model_name).resolve()
-            if ic_model_name and ic_model_name != "(none)" else None
-        )
+        comp_model_resolved = _comp_model_path.resolve()
+        ic_model_resolved = _ic_model_path.resolve() if _ic_model_path.exists() else None
 
         if not comp_model_resolved.exists():
-            st.error(f"comp_detect model not found: {comp_model_name}")
+            st.error(f"smd_comp model not found: {comp_model_name}")
         else:
             # Save image to a temp file using a UUID filename (never user-controlled)
             tmp_dir = Path("/tmp/pb_uploads")
@@ -445,8 +436,8 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
             tmp_path = tmp_dir / f"{_uuid.uuid4().hex}{_orig_suffix}"
             tmp_path.write_bytes(img_bytes)
 
-            ic_path_arg = str(ic_model_resolved) if ic_model_resolved and ic_model_resolved.exists() else None
-            if ic_model_name and ic_model_name != "(none)" and (ic_model_resolved is None or not ic_model_resolved.exists()):
+            ic_path_arg = str(ic_model_resolved) if ic_model_resolved else None
+            if not ic_model_resolved:
                 st.warning(f"ic_detect model not found: {ic_model_name} — running single-model mode.")
 
             with st.spinner("Running dual-model inference…"):
@@ -464,7 +455,7 @@ elif page == "\U0001f4f7 PCBA Photo Booth":
                     st.session_state["pb_detections"] = detections
                     st.session_state["pb_detection_config"] = {
                         "comp_model": comp_model_name,
-                        "ic_model": ic_model_name if ic_model_name != "(none)" else None,
+                        "ic_model": ic_model_name if ic_model_resolved else None,
                         "comp_conf": comp_conf,
                         "ic_conf": ic_conf,
                         "class_filter": selected_classes,
@@ -1066,11 +1057,11 @@ elif page == "\u2139\ufe0f About":
     st.markdown(r"""
     ### 🔧 Electronic Component Detection System
 
-    **nuts_vision** analyses photos of electronic circuit boards, detects up to **16 component types**,
+    **nuts_vision** analyses photos of electronic circuit boards, detects up to **13 component types**,
     and produces cropped images of each detected component.
 
     #### 🎯 Dual-Model Detection:
-    - **`comp_detect_best_v2`**: detects 16 classes — IC, LED, battery, buzzer, capacitor, clock, connector, diode, display, fuse, inductor, potentiometer, relay, resistor, switch, transistor
+    - **`smd_comp`**: detects 13 classes — Button, Capacitor, Connector, Diode, Electrolytic Capacitor, IC, Inductor, Led, Pads, Pins, Resistor, Switch, Transistor
     - **`ic_detect_best`**: classifies ICs by pin layout — `four_side` (4 rows of pins), `two_side` (2 rows), `without_side` (BGA/QFN)
     - Results are cross-referenced via IoU matching for enhanced IC detection accuracy
 
@@ -1108,5 +1099,5 @@ elif page == "\u2139\ufe0f About":
         st.markdown("**Environment:**")
         st.text(f"Python: {sys.version.split()[0]}")
         st.text(f"Streamlit: {st.__version__}")
-        default_model = Path("best.pt")
-        st.text("Model: \u2705 Found" if default_model.exists() else "Model: \u274c Not found (best.pt missing)")
+        default_model = Path("smd_comp.pt")
+        st.text("Model: \u2705 Found" if default_model.exists() else "Model: \u274c Not found (smd_comp.pt missing)")

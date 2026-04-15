@@ -20,10 +20,10 @@ def example_detection_only():
     print("EXAMPLE 1: IC Detection Only")
     print("="*60)
 
-    model_path = "best.pt"
+    model_path = "smd_comp.pt"
     if not Path(model_path).exists():
         print(f"\nError: Model not found at {model_path}")
-        print("Please place best.pt in the project root directory.")
+        print("Please place smd_comp.pt in the project root directory.")
         return
 
     detector = ComponentDetector(model_path, conf_threshold=0.3)
@@ -46,7 +46,7 @@ def example_pipeline():
     print("EXAMPLE 2: Full Pipeline (Detection + Cropping)")
     print("="*60)
 
-    model_path = "best.pt"
+    model_path = "smd_comp.pt"
     image_path = "path/to/your/board_image.jpg"
 
     if not Path(model_path).exists():
@@ -71,7 +71,7 @@ def example_batch_processing():
     print("EXAMPLE 3: Batch Processing Multiple Images")
     print("="*60)
 
-    model_path = "best.pt"
+    model_path = "smd_comp.pt"
     image_dir = "path/to/your/images/"
 
     if not Path(model_path).exists():
@@ -112,7 +112,7 @@ def main():
 
     print("\nTo get started:")
     print("\n1. Run the pipeline on your images:")
-    print("   python src/pipeline.py --model best.pt --image your_image.jpg")
+    print("   python src/pipeline.py --model smd_comp.pt --image your_image.jpg")
     print()
 
 
